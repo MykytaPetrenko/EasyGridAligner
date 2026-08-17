@@ -1,0 +1,3 @@
+[submodule "BlenderUtils"]
+	path = BlenderUtils
+	url = https://github.com/MykytaPetrenko/BlenderUtils.git
