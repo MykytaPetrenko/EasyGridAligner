@@ -9,6 +9,8 @@ AXIS_MAP = {
     "-X": (0, -1.0), "-Y": (1, -1.0), "-Z": (2, -1.0),
 }
 
+GRID_ALIGNMENT_TOLERANCE = 1e-6
+
 
 def _axis_value(coordinate, axis):
     index, sign = AXIS_MAP[axis]
@@ -29,9 +31,25 @@ def _view_projection_axes(context):
     return (horizontal_index, horizontal_sign), (vertical_index, vertical_sign)
 
 
+def _normalize_grid_boundary(value, step):
+    """Make values numerically close to a projection-step boundary exact."""
+    step_coordinate = value / step
+    nearest_step = round(step_coordinate)
+    if abs(step_coordinate - nearest_step) <= GRID_ALIGNMENT_TOLERANCE:
+        return nearest_step * step
+    return value
+
+
 def _step_offset(minimum, step):
     """Move the smallest value into the [0, step) band without changing scale."""
+    minimum = _normalize_grid_boundary(minimum, step)
     return -floor(minimum / step) * step
+
+
+def _project_value(value, offset, step=None):
+    """Apply an offset and preserve exact UVs on automatic-grid boundaries."""
+    value += offset
+    return _normalize_grid_boundary(value, step) if step is not None else value
 
 
 def _axis_label(axis):
@@ -77,9 +95,11 @@ class MODULAR_ASSETS_OT_generate_uvs_from_coordinates(bpy.types.Operator):
         if settings.uv_offset_mode == "AUTO":
             u_offset = _step_offset(u_minimum, settings.projection_offset_step)
             v_offset = _step_offset(v_minimum, settings.projection_offset_step)
+            offset_step = settings.projection_offset_step
         else:
             u_offset = settings.horizontal_offset
             v_offset = settings.vertical_offset
+            offset_step = None
 
         faces_by_object = {}
         for obj, face in selected_faces:
@@ -93,10 +113,12 @@ class MODULAR_ASSETS_OT_generate_uvs_from_coordinates(bpy.types.Operator):
                 for loop in face.loops:
                     coordinate = transform @ loop.vert.co if transform else loop.vert.co
                     loop[uv_layer].uv = (
-                        (_axis_value(coordinate, settings.u_axis) + u_offset)
-                        * settings.coordinate_scale,
-                        (_axis_value(coordinate, settings.v_axis) + v_offset)
-                        * settings.coordinate_scale,
+                        _project_value(
+                            _axis_value(coordinate, settings.u_axis), u_offset, offset_step
+                        ) * settings.coordinate_scale,
+                        _project_value(
+                            _axis_value(coordinate, settings.v_axis), v_offset, offset_step
+                        ) * settings.coordinate_scale,
                     )
             bmesh.update_edit_mesh(mesh)
             mesh.uv_layers.active = mesh.uv_layers[uv_name]
@@ -147,9 +169,11 @@ class MODULAR_ASSETS_OT_generate_uvs_from_view(bpy.types.Operator):
         if settings.uv_offset_mode == "AUTO":
             u_offset = _step_offset(u_minimum, settings.projection_offset_step)
             v_offset = _step_offset(v_minimum, settings.projection_offset_step)
+            offset_step = settings.projection_offset_step
         else:
             u_offset = settings.horizontal_offset
             v_offset = settings.vertical_offset
+            offset_step = None
         faces_by_object = {}
         for obj, face in selected_faces:
             faces_by_object.setdefault(obj, []).append(face)
@@ -162,10 +186,12 @@ class MODULAR_ASSETS_OT_generate_uvs_from_view(bpy.types.Operator):
                 for loop in face.loops:
                     world_coordinate = obj.matrix_world @ loop.vert.co
                     loop[uv_layer].uv = (
-                        (world_coordinate[u_axis[0]] * u_axis[1] + u_offset)
-                        * settings.coordinate_scale,
-                        (world_coordinate[v_axis[0]] * v_axis[1] + v_offset)
-                        * settings.coordinate_scale,
+                        _project_value(
+                            world_coordinate[u_axis[0]] * u_axis[1], u_offset, offset_step
+                        ) * settings.coordinate_scale,
+                        _project_value(
+                            world_coordinate[v_axis[0]] * v_axis[1], v_offset, offset_step
+                        ) * settings.coordinate_scale,
                     )
             bmesh.update_edit_mesh(mesh)
             mesh.uv_layers.active = mesh.uv_layers[uv_name]
