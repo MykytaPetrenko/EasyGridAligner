@@ -2,11 +2,28 @@ import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, PointerProperty, StringProperty
 from bpy.types import PropertyGroup
 
-from ..services.stairs import request_rebuild
+from ..services.stairs import request_rebuild, sync_legacy_railing
 
 
 def on_stairs_changed(self, context):
     request_rebuild(self, context)
+
+
+def on_legacy_left_changed(self, context):
+    sync_legacy_railing(self, 'LEFT', self.rail_left, context)
+
+
+def on_legacy_right_changed(self, context):
+    sync_legacy_railing(self, 'RIGHT', self.rail_right, context)
+
+
+def on_legacy_outer_changed(self, context):
+    sync_legacy_railing(self, 'OUTER', self.rail_outer_enabled, context)
+
+
+MOUNT_ITEMS = (('NONE', 'None', 'No railing on this side'),
+               ('FLIGHT', 'Flight Mounted', 'Posts mounted to the stair treads and landings'),
+               ('WALL', 'Wall Mounted', 'Handrail fixed to a wall with brackets, without posts or infill rails'))
 
 
 class MODULAR_ASSETS_PG_stairs(PropertyGroup):
@@ -24,6 +41,7 @@ class MODULAR_ASSETS_PG_stairs(PropertyGroup):
     show_railings: BoolProperty(default=True)
     show_rail_tubes: BoolProperty(default=False)
     show_rail_posts: BoolProperty(default=False)
+    show_wall_mounts: BoolProperty(default=True)
     step_count: IntProperty(name='Steps per Flight', default=8, min=1, soft_max=64, update=on_stairs_changed)
     flight_count: IntProperty(name='Flights', default=1, min=1, soft_max=8, max=64, description='Number of stair flights; Steps applies to every flight', update=on_stairs_changed)
     turn_angle: EnumProperty(name='Turn Angle', items=(('180', '180°', 'Parallel return flights'), ('90', '90°', 'Quarter-turn flights')), default='180', update=on_stairs_changed)
@@ -70,9 +88,19 @@ class MODULAR_ASSETS_PG_stairs(PropertyGroup):
 
     rail_enabled: BoolProperty(name='Enable Railing', default=False, update=on_stairs_changed)
     rail_type: EnumProperty(name='Type', items=(('TYPE_1', 'Type 1 · Tubular', 'Tubular handrail with elbows and couplings'), ('TYPE_2', 'Type 2 · Rectangular', 'Square posts, rectangular handrail and straight infill rails with fixed corner connectors')), default='TYPE_1', update=on_stairs_changed)
-    rail_left: BoolProperty(name='Left Side', default=True, update=on_stairs_changed)
-    rail_right: BoolProperty(name='Right Side', default=True, update=on_stairs_changed)
-    rail_outer_enabled: BoolProperty(name='Outer Railing', default=True, description='Include the outer railing around turning flights and landings; the inner railing remains controlled by the side switches', update=on_stairs_changed)
+    rail_left: BoolProperty(name='Left Side', default=True, update=on_legacy_left_changed)
+    rail_right: BoolProperty(name='Right Side', default=True, update=on_legacy_right_changed)
+    rail_outer_enabled: BoolProperty(name='Outer Railing', default=True, update=on_legacy_outer_changed)
+    rail_inner_mount: EnumProperty(name='Inner Railing', items=MOUNT_ITEMS, default='FLIGHT', update=on_stairs_changed)
+    rail_outer_mount: EnumProperty(name='Outer Railing', items=MOUNT_ITEMS, default='FLIGHT', update=on_stairs_changed)
+    rail_inner_include_landings: BoolProperty(name='Include Landings', default=True, description='Continue the inner railing over landings; disable for separate flight-only sections', update=on_stairs_changed)
+    rail_outer_include_landings: BoolProperty(name='Include Landings', default=True, description='Continue the outer railing over landings; disable for separate flight-only sections', update=on_stairs_changed)
+    rail_wall_clearance: FloatProperty(name='Wall Clearance', default=.05, min=.02, soft_max=.15, unit='LENGTH', description='Clear distance from the handrail surface to the wall face', update=on_stairs_changed)
+    rail_wall_bracket_spacing: FloatProperty(name='Wall Bracket Spacing', default=.9, min=.2, soft_max=2, unit='LENGTH', update=on_stairs_changed)
+    rail_wall_plate_radius: FloatProperty(name='Mounting Plate Radius', default=.035, min=.015, soft_max=.06, unit='LENGTH', update=on_stairs_changed)
+    rail_preview_walls: BoolProperty(name='Preview Wall', default=False, description='Show wireframe guide walls for wall-mounted sides, in the viewport only', update=on_stairs_changed)
+    rail_preview_wall_thickness: FloatProperty(name='Preview Wall Thickness', default=.15, min=.02, soft_max=.5, unit='LENGTH', update=on_stairs_changed)
+    rail_preview_wall_extra_height: FloatProperty(name='Height Above Handrail', default=.25, min=0, soft_max=1, unit='LENGTH', update=on_stairs_changed)
     rail_height: FloatProperty(name='Railing Height', default=1.05, min=.25, soft_max=1.5, unit='LENGTH', description='Height above the landing and sloping stair reference line', update=on_stairs_changed)
     rail_inset: FloatProperty(name='Edge Inset', default=.08, min=.01, soft_max=.3, unit='LENGTH', update=on_stairs_changed)
     rail_radius: FloatProperty(name='Handrail Radius', default=.025, min=.005, soft_max=.06, unit='LENGTH', update=on_stairs_changed)

@@ -98,25 +98,44 @@ class MODULAR_ASSETS_PT_stairs(bpy.types.Panel):
             controls.enabled = settings.rail_enabled
             controls.prop(settings, 'rail_type')
             rectangular = settings.rail_type == 'TYPE_2'
-            sides = controls.row(align=True)
-            sides.prop(settings, 'rail_left', toggle=True)
-            sides.prop(settings, 'rail_right', toggle=True)
-            outer = controls.row()
-            outer.enabled = settings.flight_count > 1
-            outer.prop(settings, 'rail_outer_enabled')
-            for name in ('rail_height', 'rail_inset', 'rail_lower_count', 'rail_post_spacing'):
+            has_flight = 'FLIGHT' in (settings.rail_inner_mount, settings.rail_outer_mount)
+            has_wall = 'WALL' in (settings.rail_inner_mount, settings.rail_outer_mount)
+            inner_side = 'Right' if settings.turn_direction == 'RIGHT' else 'Left'
+            outer_side = 'Left' if inner_side == 'Right' else 'Right'
+            for prefix, label, side in (('inner', 'Inner', inner_side), ('outer', 'Outer', outer_side)):
+                section = controls.box()
+                section.prop(settings, f'rail_{prefix}_mount', text=f'{label} ({side})')
+                extent = section.row()
+                extent.enabled = settings.flight_count > 1 and getattr(settings, f'rail_{prefix}_mount') != 'NONE'
+                extent.prop(settings, f'rail_{prefix}_include_landings')
+            for name in (('rail_height', 'rail_inset', 'rail_lower_count', 'rail_post_spacing')
+                         if has_flight else ('rail_height',)):
                 controls.prop(settings, name)
+            if has_wall:
+                sub = controls.box()
+                if dropdown(sub, settings, 'show_wall_mounts', text='Wall Mounts'):
+                    for name in ('rail_wall_clearance', 'rail_wall_bracket_spacing', 'rail_wall_plate_radius'):
+                        sub.prop(settings, name)
+                    sub.prop(settings, 'rail_connector_radius', text='Bracket Stem Radius')
+                    sub.prop(settings, 'rail_connector_segments', text='Bracket Stem Sides')
+                    sub.operator('modular_assets.preview_walls',
+                                 text='Hide Wall Preview' if settings.rail_preview_walls else 'Preview Wall',
+                                 icon='MESH_CUBE', depress=settings.rail_preview_walls)
+                    if settings.rail_preview_walls:
+                        sub.prop(settings, 'rail_preview_wall_thickness')
+                        sub.prop(settings, 'rail_preview_wall_extra_height')
+                        sub.label(text='Wireframe preview · viewport only')
             sub = controls.box()
             if dropdown(sub, settings, 'show_rail_tubes', text='Handrail, Infill & Corner Fittings' if rectangular else 'Handrail, Infill & Sleeves'):
-                names = (('rail_handrail_width', 'rail_handrail_thickness', 'rail_corner_length', 'rail_corner_allowance',
-                          'rail_lower_radius', 'rail_lower_segments', 'rail_lower_clearance') if rectangular else
+                names = (('rail_handrail_width', 'rail_handrail_thickness', 'rail_corner_length', 'rail_corner_allowance') if rectangular else
                          ('rail_radius', 'rail_bend_radius', 'rail_bend_segments', 'rail_segments',
-                          'rail_lower_radius', 'rail_lower_segments', 'rail_lower_clearance',
                           'rail_coupling_length', 'rail_coupling_thickness'))
+                if has_flight:
+                    names += ('rail_lower_radius', 'rail_lower_segments', 'rail_lower_clearance')
                 for name in names:
                     sub.prop(settings, name)
-            sub = controls.box()
-            if dropdown(sub, settings, 'show_rail_posts', text='Posts & Handrail Supports'):
+            sub = controls.box() if has_flight else None
+            if has_flight and dropdown(sub, settings, 'show_rail_posts', text='Posts & Handrail Supports'):
                 if rectangular:
                     sub.prop(settings, 'rail_post_size')
                     sub.label(text='Square post section: 4 sides')

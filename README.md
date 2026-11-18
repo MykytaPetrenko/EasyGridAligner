@@ -41,12 +41,12 @@ updating the addon to load the new modules.
 
 ## Type 1 railings
 
-In **Railing System**, enable **Enable Railing** and choose the left/right sides. The railing follows
+In **Railing System**, enable **Enable Railing** and choose inner/outer mounting modes. The railing follows
 flights and the inner/outer landing routes, including 90° and 180° turns in either direction.
 On 90° turns with an enlarged Flight Gap, the inner route follows the exposed edges of the
 landing projection at Edge Inset. The handrail, infill rails and landing posts share that route.
-**Outer Railing** can disable the outer route on multi-flight stairs while keeping the inner route.
-Its interpretation follows Turn Direction. On a straight single flight, use Left Side / Right Side.
+**Inner Railing** and **Outer Railing** each offer **None**, **Flight Mounted** and **Wall Mounted**.
+Their interpretation follows Turn Direction; the panel also shows the corresponding left/right side.
 
 Terminology: **handrail** is the upper graspable member; **railing system** is the complete assembly.
 The smaller tubes are **infill rails**, the uprights are **posts**, their thin top connections are
@@ -98,7 +98,7 @@ Straight members are trimmed at the fitting ends, rather than continuing through
 - **Corner Connector Length** sets the target length of each fitting leg. It adapts to cross-section
   size and available space; impossible combinations retain the previous geometry and report an error.
 - **Connector Allowance** adds material around the straight member's section at the fitting; default 2 mm.
-- Infill rail radius, side count, count, clearance, post spacing and left/right/outer controls remain
+- Infill rail radius, side count, count, clearance, post spacing and independent inner/outer controls remain
   available. Both types use the same landing-edge routes, including enlarged 90° landing projections.
 - Square posts and rectangular handrails have four-sided cross-sections. Cylinder-side settings
   remain available for infill rails and separate round support stems. Integral stems are square and
@@ -107,6 +107,30 @@ Straight members are trimmed at the fitting ends, rather than continuing through
 Each type retains its own section inputs when switching. Existing stairs keep Type 1 and their saved
 settings; the new Type 2 dimensions are initialized on Update. Selecting any new corner connector
 opens its owning stairs in the configurator, just like other generated parts.
+
+## Inner/outer mounting and coverage
+
+Each side has its own **None / Flight Mounted / Wall Mounted** mode and **Include Landings** switch:
+
+- **None** omits all railing components on that side.
+- **Flight Mounted** uses the selected Type 1/Type 2 style with posts and infill rails mounted on the stairs.
+- **Wall Mounted** uses the selected round/rectangular handrail style with wall brackets and mounting
+  plates, without posts or infill rails. **Wall Clearance** measures from the straight handrail surface
+  to the wall face. Wall bracket spacing, plate radius and bracket stem radius/side count are adjustable.
+
+With **Include Landings** enabled, that side continues around the intermediate landings. With it
+disabled, every flight has a separate capped section and no horizontal handrail over the landings.
+The two sides can use different coverage settings, independently of their mounting modes.
+
+**Preview Wall** toggles wireframe guide walls on wall-mounted sides. The preview follows the selected
+coverage, with configurable wall thickness and height above the handrail. These child objects are
+viewport-only and excluded from renders. The button rebuilds immediately even when Auto Update is off;
+other parameter changes continue to follow the normal Auto Update / Update behavior.
+
+All inputs persist on the stairs object and survive copying and save/reopen. Existing assets migrate
+their old left/right and outer enable switches to the corresponding None/Flight Mounted modes on
+the next update; legacy scripting switches remain supported. New mounting choices follow inner/outer
+semantics when Turn Direction changes. No timers or runtime handlers are added.
 
 The **Modular** tab in the 3D View sidebar contains the grid snapping and UV
 tools. UV generation operates on selected faces in Edit Mode, including across
@@ -227,5 +251,10 @@ type switching, schema migration and save/reopen persistence for Type 2.
 and underside, closed plate/base meshes across offsets/cuts/reinforcement/landings, independent
 plate bevels, both railing types, material persistence, finish switching, copied configurations,
 schema migration and separate slope/plan turns at overhanging landings.
+
+`tests/test_stairs_mounts.py` verifies all inner/outer mounting combinations for both styles and turn
+directions, independent flight-only coverage, closed bracket/wall meshes, handrail-wall clearance,
+bracket spacing, preview toggling with Auto Update off, orphan-mesh cleanup, material persistence,
+failed-rebuild recovery, schema migration, saved settings and copied configurations.
 
 For a recessed profile, start with **Riser Offset = 0.04 m**, **Slab Height = 0.12 m**, **Upper Bevel Width = 0.018 m / 5 segments** and **Lower Bevel Width = 0.006 m / 3 segments**, with both profiles at `0.5`. These controls are in the **Stairs Configurator** side panel. The development junction points directly to the EasyGridAligner source folder; procedural geometry is in `geometry/`, object settings in `props/`, rebuilding in `services/`, actions in `ops/`, and panels in `ui/`.

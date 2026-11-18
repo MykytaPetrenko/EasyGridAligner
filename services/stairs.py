@@ -5,20 +5,26 @@ import bpy
 from mathutils import Matrix
 
 from ..geometry.railings import build_railing_meshes
+from ..geometry.railing_system import build_railing_system_meshes
 from ..geometry.stairs import build_stair_mesh
 from ..geometry.tread_plates import build_tread_plate_mesh
 
 
 STAIR_FIELDS = tuple(name for name in signature(build_stair_mesh).parameters if name != 'name')
-RAIL_FIELDS = tuple(name for name in signature(build_railing_meshes).parameters if name != 'stairs')
+RAIL_FIELDS = tuple(name for name in signature(build_railing_meshes).parameters if name not in ('stairs', 'handrail_only'))
+SYSTEM_FIELDS = tuple(name for name in signature(build_railing_system_meshes).parameters if name not in ('stairs', 'rail_parameters'))
 PLATE_FIELDS = tuple(name for name in signature(build_tread_plate_mesh).parameters if name not in ('name', 'stairs'))
-INPUT_FIELDS = STAIR_FIELDS + RAIL_FIELDS + PLATE_FIELDS + ('rail_enabled',)
+INPUT_FIELDS = STAIR_FIELDS + RAIL_FIELDS + SYSTEM_FIELDS + PLATE_FIELDS + ('rail_enabled',)
 _REBUILDING = set()
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 PART_NAMES = {'handrail': 'Handrail', 'lower_rails': 'Infill Rails', 'posts': 'Posts',
               'connectors': 'Handrail Supports', 'couplings': 'Coupling Sleeves',
               'handrail_corners': 'Handrail Corner Connectors', 'infill_corners': 'Infill Corner Connectors',
-              'tread_plates': 'Tread Plates'}
+              'tread_plates': 'Tread Plates', 'wall_handrail': 'Wall Handrail',
+              'wall_couplings': 'Wall Handrail Coupling Sleeves',
+              'wall_handrail_corners': 'Wall Handrail Corner Connectors',
+              'wall_brackets': 'Wall Brackets', 'wall_mount_plates': 'Wall Mounting Plates',
+              'preview_walls': 'Preview Walls'}
 LEGACY_PART_NAMES = {'lower_rails': 'Lower Rails', 'connectors': 'Connectors', 'couplings': 'Couplings'}
 
 
@@ -66,6 +72,33 @@ def _plate_material():
     return material
 
 
+def sync_legacy_railing(settings, side, enabled, context):
+    """Keep scripted legacy switches usable; new UI uses mounting enums."""
+    root = settings.id_data
+    key = root.as_pointer()
+    if key in _REBUILDING:
+        return
+    if side == 'OUTER':
+        field = 'rail_outer_mount'
+    else:
+        inner = 'RIGHT' if settings.turn_direction == 'RIGHT' else 'LEFT'
+        field = 'rail_inner_mount' if side == inner else 'rail_outer_mount'
+    _REBUILDING.add(key)
+    try:
+        setattr(settings, field, 'FLIGHT' if enabled else 'NONE')
+    finally:
+        _REBUILDING.discard(key)
+    request_rebuild(settings, context)
+
+
+def _preview_material():
+    material = bpy.data.materials.get('Stairs Wall Preview')
+    if material is None:
+        material = bpy.data.materials.new('Stairs Wall Preview')
+        material.diffuse_color = (.18, .45, .65, 1)
+    return material
+
+
 def rebuild_stairs(root):
     if root.type != 'MESH' or not root.modular_stairs.is_stairs:
         raise ValueError('Select a configured stairs object')
@@ -82,6 +115,13 @@ def rebuild_stairs(root):
     prepared = {}
     try:
         if settings.schema_version < SCHEMA_VERSION:
+            inner_enabled = settings.rail_right if settings.turn_direction == 'RIGHT' else settings.rail_left
+            outer_enabled = settings.rail_left if settings.turn_direction == 'RIGHT' else settings.rail_right
+            if not settings.is_property_set('rail_inner_mount'):
+                settings.rail_inner_mount = 'FLIGHT' if inner_enabled else 'NONE'
+            if not settings.is_property_set('rail_outer_mount'):
+                enabled = outer_enabled and (settings.rail_outer_enabled or settings.flight_count == 1)
+                settings.rail_outer_mount = 'FLIGHT' if enabled else 'NONE'
             for name in INPUT_FIELDS:
                 if not settings.is_property_set(name):
                     setattr(settings, name, getattr(settings, name))
@@ -93,7 +133,8 @@ def rebuild_stairs(root):
                 f'{root.name} Tread Plates', parameters,
                 **{name: getattr(settings, name) for name in PLATE_FIELDS})
         if settings.rail_enabled:
-            prepared.update(build_railing_meshes(parameters, **{name: getattr(settings, name) for name in RAIL_FIELDS}))
+            prepared.update(build_railing_system_meshes(
+                parameters, **{name: getattr(settings, name) for name in RAIL_FIELDS + SYSTEM_FIELDS}))
         children = {child.get('modular_stair_part'): child for child in root.children
                     if child.get('modular_stair_part') in PART_NAMES}
         concrete = bpy.data.materials.get('Stair Concrete')
@@ -109,6 +150,8 @@ def rebuild_stairs(root):
                         settings.plate_material = (previous.data.materials[0] if previous is not None
                                                    and previous.data.materials else _plate_material())
                     mesh.materials.append(settings.plate_material)
+                elif name == 'preview_walls':
+                    _copy_materials(mesh, previous.data if previous is not None else None, _preview_material())
                 else:
                     _copy_materials(mesh, previous.data if previous is not None else None, _steel_material())
         previous = root.data
@@ -129,6 +172,10 @@ def rebuild_stairs(root):
                 if name in LEGACY_PART_NAMES and child.name == f'{root.name} · {LEGACY_PART_NAMES[name]}':
                     child.name = f'{root.name} · {PART_NAMES[name]}'
             prepared.pop(name)
+            if name == 'preview_walls':
+                child.display_type = 'WIRE'
+                child.hide_render = True
+                child.color = (.18, .45, .65, 1)
         for child in children.values():
             previous = child.data
             if bpy.context.view_layer.objects.active == child and root.name in bpy.context.view_layer.objects:
@@ -159,6 +206,26 @@ def request_rebuild(settings, context):
         rebuild_stairs(root)
     except Exception as error:
         settings.last_error = str(error)
+
+
+def toggle_wall_preview(root):
+    settings = root.modular_stairs
+    previous = settings.rail_preview_walls
+    key = root.as_pointer()
+    _REBUILDING.add(key)
+    try:
+        settings.rail_preview_walls = not previous
+    finally:
+        _REBUILDING.discard(key)
+    try:
+        rebuild_stairs(root)
+    except Exception:
+        _REBUILDING.add(key)
+        try:
+            settings.rail_preview_walls = previous
+        finally:
+            _REBUILDING.discard(key)
+        raise
 
 
 def create_stairs(context, source=None):

@@ -1,7 +1,7 @@
 import bpy
 from bpy.types import Operator
 
-from ..services.stairs import create_stairs, find_stairs, rebuild_stairs
+from ..services.stairs import create_stairs, find_stairs, rebuild_stairs, toggle_wall_preview
 
 
 class MODULAR_ASSETS_OT_add_stairs(Operator):
@@ -48,7 +48,28 @@ def add_stairs_menu(self, context):
         self.layout.operator(MODULAR_ASSETS_OT_add_stairs.bl_idname, text='Modular Stairs', icon='MESH_CUBE')
 
 
-classes = (MODULAR_ASSETS_OT_add_stairs, MODULAR_ASSETS_OT_update_stairs)
+class MODULAR_ASSETS_OT_preview_walls(Operator):
+    bl_idname = 'modular_assets.preview_walls'
+    bl_label = 'Preview Wall'
+    bl_description = 'Show or hide viewport-only guide walls for wall-mounted handrails'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        root = find_stairs(context.object)
+        return (context.mode == 'OBJECT' and root is not None and root.modular_stairs.rail_enabled
+                and 'WALL' in (root.modular_stairs.rail_inner_mount, root.modular_stairs.rail_outer_mount))
+
+    def execute(self, context):
+        try:
+            toggle_wall_preview(find_stairs(context.object))
+        except (ValueError, RuntimeError) as error:
+            self.report({'ERROR'}, str(error))
+            return {'CANCELLED'}
+        return {'FINISHED'}
+
+
+classes = (MODULAR_ASSETS_OT_add_stairs, MODULAR_ASSETS_OT_update_stairs, MODULAR_ASSETS_OT_preview_walls)
 
 
 def register():

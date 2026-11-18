@@ -139,20 +139,21 @@ def build_rectangular_railing_meshes(
     rail_lower_count=4, rail_lower_radius=.008, rail_lower_clearance=.12, rail_lower_segments=8,
     rail_post_spacing=.9, rail_connector_radius=.008, rail_connector_length=.07,
     rail_connector_mode='SEPARATE', rail_connector_segments=8, rail_connector_match_post=False,
+    handrail_only=False,
 ):
     if min(rail_handrail_width, rail_handrail_thickness, rail_post_size, rail_corner_length) <= EPSILON:
         raise ValueError('Handrail, post and corner connector dimensions must be positive')
     if rail_corner_allowance < 0:
         raise ValueError('Corner connector allowance cannot be negative')
-    if rail_inset < max(rail_handrail_width / 2 + rail_corner_allowance, rail_post_size * .8):
+    if rail_inset < max(rail_handrail_width / 2 + rail_corner_allowance, 0 if handrail_only else rail_post_size * .8):
         raise ValueError('Edge Inset must keep the rectangular handrail and post bases inside the stair edge')
     if 2 * (rail_inset + rail_handrail_width / 2 + rail_corner_allowance) >= stairs['width']:
         raise ValueError('The stairs are too narrow for the rectangular railing section')
-    if rail_connector_radius >= rail_post_size / 2:
+    if not handrail_only and rail_connector_radius >= rail_post_size / 2:
         raise ValueError('The handrail support stem must be thinner than the square post')
     if rail_connector_mode not in ('SEPARATE', 'INTEGRATED'):
         raise ValueError('Choose Separate Support or Integral Stem')
-    if rail_height <= stairs['riser'] / 2 + rail_handrail_thickness / 2 + rail_connector_length + .03:
+    if not handrail_only and rail_height <= stairs['riser'] / 2 + rail_handrail_thickness / 2 + rail_connector_length + .03:
         raise ValueError('Railing Height leaves no room for the square posts and supports')
     if rail_lower_count and rail_lower_clearance >= rail_height - .1:
         raise ValueError('Infill Clearance must be below the handrail')
@@ -176,6 +177,8 @@ def build_rectangular_railing_meshes(
         _append_fixed_rail(parts['handrail'], parts['handrail_corners'], path,
                             rail_handrail_width, rail_handrail_thickness, None, 4,
                             rail_corner_length, rail_corner_allowance)
+        if handrail_only:
+            continue
         for index in range(rail_lower_count):
             height = rail_lower_clearance + (rail_height - .1 - rail_lower_clearance) * (index + 1) / (rail_lower_count + 1)
             lower = [point + Vector((0, 0, height - rail_height)) for point in path]

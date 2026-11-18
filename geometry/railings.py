@@ -31,7 +31,7 @@ def build_railing_meshes(
     rail_connector_segments=8, rail_connector_match_post=False,
     rail_connector_mode='SEPARATE', rail_outer_enabled=True,
     rail_handrail_width=.05, rail_handrail_thickness=.025, rail_post_size=.04,
-    rail_corner_length=.06, rail_corner_allowance=.002,
+    rail_corner_length=.06, rail_corner_allowance=.002, handrail_only=False,
 ):
     if rail_type == 'TYPE_2':
         return build_rectangular_railing_meshes(
@@ -43,18 +43,19 @@ def build_railing_meshes(
             rail_lower_clearance=rail_lower_clearance, rail_lower_segments=rail_lower_segments,
             rail_post_spacing=rail_post_spacing, rail_connector_radius=rail_connector_radius,
             rail_connector_length=rail_connector_length, rail_connector_mode=rail_connector_mode,
-            rail_connector_segments=rail_connector_segments, rail_connector_match_post=rail_connector_match_post)
+            rail_connector_segments=rail_connector_segments, rail_connector_match_post=rail_connector_match_post,
+            handrail_only=handrail_only)
     if rail_type != 'TYPE_1':
         raise ValueError('Choose railing Type 1 or Type 2')
-    if rail_height <= stairs['riser'] / 2 + rail_radius + rail_connector_length + .03:
+    if not handrail_only and rail_height <= stairs['riser'] / 2 + rail_radius + rail_connector_length + .03:
         raise ValueError('Railing Height is too low for the posts and connectors')
-    if rail_inset < max(rail_radius + rail_coupling_thickness, rail_post_radius * 1.8):
+    if rail_inset < max(rail_radius + rail_coupling_thickness, 0 if handrail_only else rail_post_radius * 1.8):
         raise ValueError('Railing Inset must keep the tubes and post bases inside the stair edge')
     if 2 * (rail_inset + rail_radius + rail_coupling_thickness) >= stairs['width']:
         raise ValueError('The stairs are too narrow for the selected railing inset and diameter')
     if rail_bend_radius <= rail_radius * 1.05:
         raise ValueError('Elbow Radius must be larger than the handrail tube radius')
-    if rail_connector_radius >= rail_post_radius:
+    if not handrail_only and rail_connector_radius >= rail_post_radius:
         raise ValueError('Connector Radius must be smaller than Post Radius')
     if rail_lower_count and rail_lower_clearance >= rail_height - .1:
         raise ValueError('Lower Rail Clearance must be below the handrail')
@@ -89,6 +90,8 @@ def build_railing_meshes(
             if end_joint:
                 _append_sleeve(parts['couplings'], end - direction * sleeve_length, end,
                                rail_radius * .99, rail_radius + rail_coupling_thickness, rail_segments)
+        if handrail_only:
+            continue
         for index in range(rail_lower_count):
             height = rail_lower_clearance + (rail_height - .1 - rail_lower_clearance) * (index + 1) / (rail_lower_count + 1)
             lower = [point + Vector((0, 0, height - rail_height)) for point in path]
