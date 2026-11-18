@@ -1,7 +1,7 @@
-from . import tools_panel
+from . import tools_panel, stairs
 
 
-modules = (tools_panel,)
+modules = (tools_panel, stairs)
 
 
 def register():

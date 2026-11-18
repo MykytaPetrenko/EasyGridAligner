@@ -1,7 +1,7 @@
-from . import snap_settings
+from . import snap_settings, stairs
 
 
-modules = (snap_settings,)
+modules = (snap_settings, stairs)
 
 
 def register():

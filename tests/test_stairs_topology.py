@@ -10,7 +10,7 @@ import bpy
 
 
 SOURCE = (Path(sys.argv[sys.argv.index('--') + 1]) if '--' in sys.argv
-          else Path(__file__).resolve().parents[1] / 'ops/stairs.py')
+          else Path(__file__).resolve().parents[1] / 'geometry/stairs.py')
 SPEC = importlib.util.spec_from_file_location('stairs_test', SOURCE)
 STAIRS = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(STAIRS)
