@@ -127,7 +127,8 @@ def build_baluster_railing_meshes(
                 continue
             post_centers.append(target)
             across, along, gradient, scale = _segment_axes(*segment)
-            top = target.z + rail_height - (rail_type3_handrail_thickness / 2 + rail_top_rail_height) * scale
+            # Wide posts reach the metal top rail's upper plane; thin balusters stop below it.
+            top = target.z + rail_height - rail_type3_handrail_thickness * scale / 2
             if top <= base.z + .025:
                 raise ValueError('Railing Height leaves no room for a supporting post')
             flange_top = base.z + .012

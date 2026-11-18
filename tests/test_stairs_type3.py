@@ -111,6 +111,32 @@ class Type3Test(unittest.TestCase):
             self.assertEqual(len(mesh.materials), 2)
             self.assert_closed(mesh)
 
+    def test_posts_reach_top_of_metal_rail_while_balusters_stop_at_underside(self):
+        root = self.create()
+        for riser, rail_thickness, post_size, cap_thickness in itertools.product(
+            (.12, .2), (.004, .02), (.04, .06), (.04, .06),
+        ):
+            with self.subTest(riser=riser, rail_thickness=rail_thickness,
+                              post_size=post_size, cap_thickness=cap_thickness):
+                self.configure(root, riser=riser, rail_top_rail_height=rail_thickness,
+                               rail_post_size=post_size, rail_type3_handrail_thickness=cap_thickness)
+                mesh = self.parts(root)['balustrade'].data
+                settings = root.modular_stairs
+                slope = settings.riser / settings.tread
+                scale = (1 + slope ** 2) ** .5
+                posts = self.vertical_groups(mesh, 16)
+                balusters = self.vertical_groups(mesh, 8)
+                self.assertTrue(posts)
+                self.assertTrue(balusters)
+                for groups, depth in ((posts, -cap_thickness / 2),
+                                      (balusters, -cap_thickness / 2 - rail_thickness)):
+                    for group in groups:
+                        for index in group[-4:]:
+                            point = mesh.vertices[index].co
+                            normal_depth = (point.z + point.y * slope - settings.rail_height) / scale
+                            self.assertAlmostEqual(normal_depth, depth, places=5)
+                self.assert_closed(mesh)
+
     def test_top_rail_migration_and_copy_with_thin_existing_bottom_rail(self):
         root = self.create(rail_top_rail_height=.004, rail_base_rail_height=.01)
         settings = root.modular_stairs
