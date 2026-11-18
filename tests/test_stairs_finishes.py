@@ -130,7 +130,7 @@ class FinishTest(unittest.TestCase):
             settings.property_unset(name)
         settings.auto_update = True
         self.assertFalse(settings.last_error)
-        self.assertEqual(settings.schema_version, 8)
+        self.assertEqual(settings.schema_version, 10)
         self.assertEqual(settings.tread_finish, 'ORIGINAL')
         self.assertTrue(settings.use_top_bevel)
         self.assertAlmostEqual(settings.top_bevel_width, .014)

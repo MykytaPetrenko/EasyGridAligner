@@ -164,7 +164,7 @@ class RailingDetailTest(unittest.TestCase):
                      'rail_connector_segments', 'rail_connector_match_post', 'rail_connector_mode', 'rail_outer_enabled'):
             settings.property_unset(name)
         rebuild_stairs(root)
-        self.assertEqual(settings.schema_version, 8)
+        self.assertEqual(settings.schema_version, 10)
         self.assertEqual(settings.rail_segments, 20)
         self.assertEqual(settings.rail_lower_segments, 8)
         self.assertFalse(settings.rail_connector_match_post)

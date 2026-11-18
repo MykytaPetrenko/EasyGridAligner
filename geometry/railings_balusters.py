@@ -91,6 +91,7 @@ def build_baluster_railing_meshes(
         stairs['turn_angle'], stairs['turn_direction'], stairs['landing_depth'], stairs['flight_gap'],
         stairs['landing_side_overhang'], stairs['landing_end_overhang'])
     wood, metal = ([], [], []), ([], [], [])
+    wood_sharp_edges = []
     inner = 1 if stairs['turn_direction'] == 'RIGHT' else -1
     for side, enabled in ((-1, rail_left), (1, rail_right)):
         if not enabled or (stairs['flight_count'] > 1 and not rail_outer_enabled and side != inner):
@@ -100,7 +101,8 @@ def build_baluster_railing_meshes(
         cap_path = [point + UP * rail_height for point in _extend_path(route, rail_start_extension, rail_end_extension)]
         cap_rings = _mitered_bar_rings(cap_path, rail_type3_handrail_width, rail_type3_handrail_thickness)
         append_timber_cap(wood, cap_path, cap_rings, rail_type3_handrail_width, rail_type3_handrail_thickness,
-                          smooth=stairs.get('use_smooth_shading', True), **(cap_options or {}))
+                          smooth=stairs.get('use_smooth_shading', True), sharp_edges=wood_sharp_edges,
+                          **(cap_options or {}))
         controls = _trim_path(route, rail_infill_start_setback, rail_infill_end_setback)
         # Offset within the cross-section, perpendicular to each run. This
         # shares the timber underside plane on slopes and at mitered turns.
@@ -161,7 +163,7 @@ def build_baluster_railing_meshes(
     vertices.extend(metal[0])
     faces.extend(tuple(index + offset for index in face) for face in metal[1])
     smooth.extend(metal[2])
-    mesh = _make_mesh('Stairs Vertical Baluster Railing', wood)
+    mesh = _make_mesh('Stairs Vertical Baluster Railing', wood, sharp_edges=wood_sharp_edges)
     try:
         for face in mesh.polygons:
             face.material_index = 1 if face.index < wood_faces else 0

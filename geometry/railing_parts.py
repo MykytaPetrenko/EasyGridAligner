@@ -265,7 +265,7 @@ def _closest_on_path(point, path, with_segment=False):
     return (best, best_segment) if with_segment else best
 
 
-def _make_mesh(name, part):
+def _make_mesh(name, part, sharp_edges=None):
     vertices, faces, smooth = part
     mesh = bpy.data.meshes.new(name)
     bm = bmesh.new()
@@ -275,8 +275,14 @@ def _make_mesh(name, part):
             face.use_smooth = use_smooth
         bm.from_mesh(mesh)
         bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+        sharp = set(sharp_edges or ())
+        if sharp:
+            bm.verts.index_update()
         for edge in bm.edges:
             edge.smooth = all(face.smooth for face in edge.link_faces)
+            if edge.smooth and sharp:
+                key = tuple(sorted(vertex.index for vertex in edge.verts))
+                edge.smooth = key not in sharp
         bm.to_mesh(mesh)
     except Exception:
         bpy.data.meshes.remove(mesh)

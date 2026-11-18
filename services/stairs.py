@@ -16,7 +16,7 @@ SYSTEM_FIELDS = tuple(name for name in signature(build_railing_system_meshes).pa
 PLATE_FIELDS = tuple(name for name in signature(build_tread_plate_mesh).parameters if name not in ('name', 'stairs'))
 INPUT_FIELDS = STAIR_FIELDS + RAIL_FIELDS + SYSTEM_FIELDS + PLATE_FIELDS + ('rail_enabled',)
 _REBUILDING = set()
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 10
 PART_NAMES = {'handrail': 'Handrail', 'lower_rails': 'Infill Rails', 'posts': 'Posts',
               'connectors': 'Handrail Supports', 'couplings': 'Coupling Sleeves',
               'handrail_corners': 'Handrail Corner Connectors', 'infill_corners': 'Infill Corner Connectors',
@@ -158,6 +158,13 @@ def rebuild_stairs(root):
     prepared = {}
     try:
         if settings.schema_version < SCHEMA_VERSION:
+            if not settings.is_property_set('rail_cap_bevel_ends'):
+                settings.rail_cap_bevel_ends = bool(settings.get('rail_cap_bevel_start', False)
+                                                   or settings.get('rail_cap_bevel_end', False))
+            if not settings.is_property_set('rail_cap_ends_bevel_width'):
+                widths = [settings.get(f'rail_cap_{end}_bevel_width', .002)
+                          for end in ('start', 'end') if settings.get(f'rail_cap_bevel_{end}', False)]
+                settings.rail_cap_ends_bevel_width = max(widths, default=.002)
             if not settings.is_property_set('rail_top_rail_height'):
                 settings.rail_top_rail_height = min(.015, settings.rail_base_rail_height * .5)
             inner_enabled = settings.rail_right if settings.turn_direction == 'RIGHT' else settings.rail_left

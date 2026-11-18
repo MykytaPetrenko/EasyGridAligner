@@ -62,10 +62,10 @@ class MODULAR_ASSETS_PT_stairs(bpy.types.Panel):
                 box.prop(settings, 'plate_thickness')
                 box.template_ID(settings, 'plate_material', new='material.new')
                 box.label(text='Included in the existing stair height')
-                for name in ('plate_bevel_front', 'plate_bevel_sides'):
+                for name in ('plate_bevel_front', 'plate_bevel_sides', 'plate_bevel_corners'):
                     box.prop(settings, name)
                 controls = box.column()
-                controls.enabled = settings.plate_bevel_front or settings.plate_bevel_sides
+                controls.enabled = settings.plate_bevel_front or settings.plate_bevel_sides or settings.plate_bevel_corners
                 for name in ('plate_bevel_width', 'plate_bevel_segments', 'plate_bevel_profile'):
                     controls.prop(settings, name)
             else:
@@ -172,14 +172,14 @@ class MODULAR_ASSETS_PT_stairs(bpy.types.Panel):
                     boards.prop(settings, 'rail_cap_max_length')
                     boards.prop(settings, 'rail_cap_joint_gap')
                     sub.separator()
-                    for group in ('top', 'bottom', 'start', 'end'):
+                    for group in ('top', 'bottom', 'ends'):
                         row = sub.row(align=True)
                         row.prop(settings, f'rail_cap_bevel_{group}')
                         amount = row.row()
                         amount.enabled = getattr(settings, f'rail_cap_bevel_{group}')
                         amount.prop(settings, f'rail_cap_{group}_bevel_width')
                     bevel = sub.column()
-                    bevel.enabled = any(getattr(settings, f'rail_cap_bevel_{group}') for group in ('top', 'bottom', 'start', 'end'))
+                    bevel.enabled = any(getattr(settings, f'rail_cap_bevel_{group}') for group in ('top', 'bottom', 'ends'))
                     bevel.prop(settings, 'rail_cap_bevel_segments')
                     bevel.prop(settings, 'rail_cap_bevel_profile')
             sub = controls.box() if has_flight else None

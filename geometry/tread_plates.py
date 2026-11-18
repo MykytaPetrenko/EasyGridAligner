@@ -3,11 +3,12 @@ import bmesh
 import bpy
 
 from .stairs import EPSILON, _flight_layout
+from .finish_shading import FinishShading
 
 
 def _append_plate(bm, frame, x0, x1, back, front, lower_front, height, thickness,
                   bevel_front, bevel_sides, bevel_width, bevel_segments, bevel_profile,
-                  smooth, excluded_sides=()):
+                  smooth, excluded_sides=(), bevel_corners=False):
     low = height - thickness
     coords = ((x0, lower_front, low), (x1, lower_front, low),
               (x1, back, low), (x0, back, low),
@@ -18,6 +19,7 @@ def _append_plate(bm, frame, x0, x1, back, front, lower_front, height, thickness
              ((3, 2, 1, 0), (4, 5, 6, 7), (0, 1, 5, 4),
               (1, 2, 6, 5), (2, 3, 7, 6), (3, 0, 4, 7))]
     bmesh.ops.recalc_face_normals(bm, faces=faces)
+    shading = FinishShading(bm, smooth)
     bevel_edges = []
     if bevel_width > EPSILON:
         for first, second, side, enabled in (
@@ -26,23 +28,26 @@ def _append_plate(bm, frame, x0, x1, back, front, lower_front, height, thickness
         ):
             if enabled and side not in excluded_sides:
                 bevel_edges.append(bm.edges.get((vertices[first], vertices[second])))
+        if bevel_corners and 'NEAR' not in excluded_sides:
+            for first, second, side in ((0, 4, 'LEFT'), (1, 5, 'RIGHT')):
+                if side not in excluded_sides:
+                    bevel_edges.append(bm.edges.get((vertices[first], vertices[second])))
         if bevel_edges:
             # Never round below the underside of the finish or change its level.
-            result = bmesh.ops.bevel(
-                bm, geom=bevel_edges, offset=min(bevel_width, thickness * .49),
+            shading.bevel(
+                bevel_edges, offset=min(bevel_width, thickness * .49),
                 segments=bevel_segments, profile=bevel_profile,
-                affect='EDGES', clamp_overlap=True, loop_slide=True)
-            for face in result['faces']:
-                face.smooth = smooth
+                clamp_overlap=True, loop_slide=True)
     # This bmesh contains only this plate, so transformation includes bevel vertices.
     bmesh.ops.transform(bm, matrix=frame, verts=list(bm.verts))
     bm.normal_update()
-    for edge in bm.edges:
-        edge.smooth = all(face.smooth for face in edge.link_faces)
+    shading.apply()
+    bm.faces.layers.int.remove(shading.layer)
 
 
 def build_tread_plate_mesh(name, stairs, plate_bevel_front=True, plate_bevel_sides=True,
-                           plate_bevel_width=.003, plate_bevel_segments=3, plate_bevel_profile=.5):
+                           plate_bevel_width=.003, plate_bevel_segments=3, plate_bevel_profile=.5,
+                           plate_bevel_corners=False):
     """All plates share one child object/material; each is a closed solid."""
     thickness = stairs['plate_thickness']
     frames, landings = _flight_layout(
@@ -70,7 +75,8 @@ def build_tread_plate_mesh(name, stairs, plate_bevel_front=True, plate_bevel_sid
             piece.clear()
             _append_plate(piece, frame, x0, x1, back, front, lower_front, height, thickness,
                           plate_bevel_front, plate_bevel_sides, plate_bevel_width,
-                          plate_bevel_segments, plate_bevel_profile, stairs['use_smooth_shading'], excluded)
+                          plate_bevel_segments, plate_bevel_profile, stairs['use_smooth_shading'], excluded,
+                          bevel_corners=plate_bevel_corners)
             piece.to_mesh(mesh)
             combined.from_mesh(mesh)
         bmesh.ops.recalc_face_normals(combined, faces=combined.faces)

@@ -138,10 +138,15 @@ set the rectangular section across/along the railing. Handrail width/thickness a
 width/thickness/clearance are independent; **Post Spacing** and **Square Post Width** control the
 support posts. Bottom Clearance keeps the sloping rail above the step noses.
 
-**Handrail Boards & Bevels** provides four optional edge groups: **Top Edge Bevel**, **Bottom Edge
-Bevel**, **Start Cap Bevel** and **End Cap Bevel**. Each has its own width; segment count and
-profile are shared. Bevels affect the cap only, with smooth shading on the rounded strips when
-Smooth Shading is enabled. Widths are clamped below half the cap's smaller cross-section dimension.
+**Handrail Boards & Bevels** provides three optional edge groups: **Top Edge Bevel**, **Bottom Edge
+Bevel** and **Start/End Cap Bevel**. Each has its own width; segment count and
+profile are shared. Start/End bevels both board ends. With only Top enabled, the bottom
+edge of each end is preserved; with only Bottom enabled, the top end edge is preserved.
+With neither Top nor Bottom enabled, or with both enabled, the complete end contour is beveled.
+Bevels affect the cap only. With Smooth Shading enabled, all cap polygons shade
+smoothly, including the large original faces. Bevel tangent boundaries stay smooth; only unrounded
+corners and unrounded end-cap outlines are sharp. Widths are clamped below half the cap's smaller
+cross-section dimension.
 
 Enable **Split into Boards** to create separate closed timber pieces at each direction change.
 Long straight runs are further divided by **Maximum Board Length**. **Joint Gap** controls the
@@ -203,6 +208,11 @@ material. It survives rebuilds, finish switches, copied configurations and save/
 plate object opens its owning stair configuration.
 
 **Front Edge Bevel** and **Side Edge Bevels** independently round the plates' upper exposed edges.
+**Front Corner Bevels** additionally rounds the two vertical front corners, producing a smooth
+three-dimensional corner when combined with the upper front/side bevels. Unrounded rear interfaces
+stay sharp. All plate faces use the Smooth Shading setting: bevel strips and their tangent boundaries
+are smooth, while surviving unrounded corners remain sharp, including their continuation through a
+bevel miter. Coplanar subdivisions are smooth.
 Width, segment count and profile are independent from the original bevel settings. Width is clamped
 below half the plate thickness. Rear edges against risers and landing/flight interfaces stay square.
 The original structural tread bevels are replaced in plate mode; their saved settings return when
@@ -314,9 +324,15 @@ sections and inclined end cuts, bar/post spacing, turn/gap/coverage combinations
 mounting, Blender slot edits, material edits with Auto Update off, save/reopen/copy behavior,
 unchanged existing styles during schema migration, closed solids and failed-rebuild recovery.
 
-`tests/test_stairs_timber.py` checks all four cap bevel groups separately and together, split/continuous
+`tests/test_stairs_timber.py` checks all three cap bevel groups separately and together, split/continuous
 caps, closed solids under bevel clamping, board lengths and perpendicular joint gaps, asymmetric
 extensions/setbacks for all three styles, wall/flight/landing combinations, saved settings and recovery
 from impossible gaps without replacing the previous geometry.
+
+`tests/test_finish_shading.py` verifies smooth faces and bevel boundaries, sharp unrounded caps and
+corners, sharp miter continuations when the vertical corner is unrounded, smooth front corner patches,
+corner-only bevels, bevel clamping and riser offsets, inherited shading after assembly merges and
+two-material assignments. Finish generators share `geometry/finish_shading.py`; this bevel-provenance
+helper is a candidate for BlenderUtils if reused by other add-ons.
 
 For a recessed profile, start with **Riser Offset = 0.04 m**, **Slab Height = 0.12 m**, **Upper Bevel Width = 0.018 m / 5 segments** and **Lower Bevel Width = 0.006 m / 3 segments**, with both profiles at `0.5`. These controls are in the **Stairs Configurator** side panel. The development junction points directly to the EasyGridAligner source folder; procedural geometry is in `geometry/`, object settings in `props/`, rebuilding in `services/`, actions in `ops/`, and panels in `ui/`.

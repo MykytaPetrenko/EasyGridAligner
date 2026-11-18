@@ -55,25 +55,25 @@ class TimberTest(unittest.TestCase):
         wood = {i for face in mesh.polygons if face.material_index == 1 for i in face.vertices}
         return [group for group in components(mesh) if set(group).issubset(wood)]
 
-    def test_four_bevel_groups_independently_and_together(self):
+    def test_three_bevel_groups_independently_and_together(self):
         root = self.create(rail_cap_max_length=.9)
         counts = {}
-        for split, mask in itertools.product((False, True), itertools.product((False, True), repeat=4)):
+        for split, mask in itertools.product((False, True), itertools.product((False, True), repeat=3)):
             with self.subTest(split=split, mask=mask):
                 self.configure(root, rail_cap_split=split,
-                    **{f'rail_cap_bevel_{name}': enabled for name, enabled in zip(('top', 'bottom', 'start', 'end'), mask)},
+                    **{f'rail_cap_bevel_{name}': enabled for name, enabled in zip(('top', 'bottom', 'ends'), mask)},
                     rail_cap_top_bevel_width=.003, rail_cap_bottom_bevel_width=.001,
-                    rail_cap_start_bevel_width=.004, rail_cap_end_bevel_width=.002)
+                    rail_cap_ends_bevel_width=.004)
                 mesh = self.parts(root)['balustrade'].data
                 self.assert_closed(mesh)
                 counts[split, mask] = sum(face.material_index == 1 for face in mesh.polygons)
                 self.assertEqual(len(mesh.materials), 2)
                 self.assertEqual(len(self.wood_groups(mesh)), 8 if split else 2)
-                self.assertEqual(any(face.use_smooth for face in mesh.polygons if face.material_index == 1), any(mask))
+                self.assertTrue(all(face.use_smooth for face in mesh.polygons if face.material_index == 1))
         for split in (False, True):
-            for mask in itertools.product((False, True), repeat=4):
+            for mask in itertools.product((False, True), repeat=3):
                 if any(mask):
-                    self.assertGreater(counts[split, mask], counts[split, (False,) * 4])
+                    self.assertGreater(counts[split, mask], counts[split, (False,) * 3])
 
     def test_split_board_lengths_and_actual_joint_gaps(self):
         root = self.create(rail_cap_split=True, rail_cap_max_length=.9, rail_cap_joint_gap=.004)
@@ -143,9 +143,9 @@ class TimberTest(unittest.TestCase):
     def test_turns_wall_mounts_split_and_bevel_clamping(self):
         root = self.create(flight_count=3, rail_cap_split=True, rail_cap_max_length=1.0,
                            rail_cap_bevel_top=True, rail_cap_bevel_bottom=True,
-                           rail_cap_bevel_start=True, rail_cap_bevel_end=True,
+                           rail_cap_bevel_ends=True,
                            rail_cap_top_bevel_width=.1, rail_cap_bottom_bevel_width=.1,
-                           rail_cap_start_bevel_width=.1, rail_cap_end_bevel_width=.1,
+                           rail_cap_ends_bevel_width=.1,
                            landing_side_overhang=.25, landing_end_overhang=.3)
         for angle, direction, include, mode in itertools.product(
             ('90', '180'), ('LEFT', 'RIGHT'), (False, True), ('FLIGHT', 'WALL'),
@@ -156,9 +156,37 @@ class TimberTest(unittest.TestCase):
                 for obj in root.children:
                     self.assert_closed(obj.data)
 
+    def test_legacy_start_end_settings_migrate_to_one_control(self):
+        root = self.create()
+        settings = root.modular_stairs
+        for start, end in itertools.product((False, True), repeat=2):
+            with self.subTest(start=start, end=end):
+                settings.auto_update = False
+                settings.schema_version = 9
+                settings.property_unset('rail_cap_bevel_ends')
+                settings.property_unset('rail_cap_ends_bevel_width')
+                settings['rail_cap_bevel_start'] = start
+                settings['rail_cap_bevel_end'] = end
+                settings['rail_cap_start_bevel_width'] = .003
+                settings['rail_cap_end_bevel_width'] = .007
+                settings.auto_update = True
+                self.assertFalse(settings.last_error, settings.last_error)
+                self.assertEqual(settings.schema_version, 10)
+                self.assertEqual(settings.rail_cap_bevel_ends, start or end)
+                self.assertAlmostEqual(settings.rail_cap_ends_bevel_width,
+                                       .007 if end else .003 if start else .002)
+                self.assert_closed(self.parts(root)['balustrade'].data)
+        settings.auto_update = False
+        settings.schema_version = 9
+        settings.rail_cap_bevel_ends = False
+        settings.rail_cap_ends_bevel_width = .005
+        settings.auto_update = True
+        self.assertFalse(settings.rail_cap_bevel_ends, 'An explicit new setting wins over legacy data')
+        self.assertAlmostEqual(settings.rail_cap_ends_bevel_width, .005)
+
     def test_save_reopen_and_invalid_gap_recovery(self):
         root = self.create(rail_cap_split=True, rail_cap_max_length=.85, rail_cap_joint_gap=.005,
-                           rail_cap_bevel_top=True, rail_cap_bevel_start=True,
+                           rail_cap_bevel_top=True, rail_cap_bevel_ends=True,
                            rail_cap_top_bevel_width=.003, rail_start_extension=.09)
         name = root.name
         path = Path(os.environ['STAIRS_TEST_OUTPUT']) / 'stairs_timber_test.blend'
@@ -170,7 +198,7 @@ class TimberTest(unittest.TestCase):
         self.assertAlmostEqual(settings.rail_cap_joint_gap, .005)
         self.assertAlmostEqual(settings.rail_start_extension, .09)
         self.assertTrue(settings.rail_cap_bevel_top)
-        self.assertTrue(settings.rail_cap_bevel_start)
+        self.assertTrue(settings.rail_cap_bevel_ends)
         self.assertFalse(settings.rail_cap_bevel_bottom)
         self.assertTrue(all(settings.is_property_set(name) for name in INPUT_FIELDS))
         before = {child: child.data for child in loaded.children}
