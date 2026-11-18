@@ -42,7 +42,18 @@ def expected_volume(p):
                 removed = positive_integral(-bottom, -bottom - r * cut / t, cut)
                 removed_rib = positive_integral(rd - bottom, rd - bottom - r * cut / t, cut)
                 volume -= w * removed + 2 * rw * (removed_rib - removed)
-    return volume + count * w * r * p['riser_offset'] / 2
+    volume += count * w * r * p['riser_offset'] / 2
+    flights = p.get('flight_count', 1)
+    if flights > 1:
+        uncut = expected_volume(p | dict(flight_count=1, start_cut_type='NONE'))
+        volume += (flights - 1) * uncut
+        gap, side, end = p['flight_gap'], p['landing_side_overhang'], p['landing_end_overhang']
+        if p['turn_angle'] == '180':
+            area = (2 * w + gap + 2 * side) * (p['landing_depth'] + end)
+        else:
+            area = (w + gap + side) * (max(p['landing_depth'], w + gap) + end)
+        volume += (flights - 1) * area * slab
+    return volume
 
 
 DEFAULTS = dict(step_count=4, width=2.0, riser=.2, tread=.3, slab_height=.2,
@@ -80,7 +91,7 @@ class StairTopologyTest(unittest.TestCase):
                 tolerance += p['step_count'] * p['width'] * min(p['top_bevel_width'], p['riser'], p['tread'])**2 * 8
             if p['use_bottom_bevel']:
                 tolerance += p['step_count'] * p['width'] * min(p['bottom_bevel_width'], p['riser'], p['tread'])**2 * 8
-            self.assertAlmostEqual(bm.calc_volume(signed=True), volume, delta=tolerance)
+            self.assertAlmostEqual(bm.calc_volume(signed=True), volume, delta=tolerance * p.get('flight_count', 1))
             self.assertFalse(mesh.validate())
         finally:
             bm.free()
@@ -217,6 +228,111 @@ class StairTopologyTest(unittest.TestCase):
                                   top_bevel_segments=segments[0], bottom_bevel_segments=segments[1],
                                   top_bevel_profile=profiles[0], bottom_bevel_profile=profiles[1],
                                   top_bevel_width=widths[0], bottom_bevel_width=widths[1])
+
+    def test_multiflight_landings(self):
+        for flights, angle, direction, ribs, top, beveled in itertools.product(
+            (2, 3, 4), ('90', '180'), ('RIGHT', 'LEFT'), (False, True), (False, True), (False, True),
+        ):
+            with self.subTest(flights=flights, angle=angle, direction=direction,
+                              ribs=ribs, top=top, bevels=beveled):
+                self.assert_shell(flight_count=flights, turn_angle=angle, turn_direction=direction,
+                                  landing_depth=1.2, flight_gap=.2, landing_side_overhang=.15,
+                                  landing_end_overhang=.25, use_side_ribs=ribs, cut_top=top,
+                                  riser_offset=.04, use_top_bevel=beveled, use_bottom_bevel=beveled)
+
+    def test_multiflight_cuts_gaps_and_overhangs(self):
+        for angle, gap, overhangs, cut, offset, top in itertools.product(
+            ('90', '180'), (.001, .3), ((0.0, 0.0), (.2, .4)),
+            ('NONE', 'FLOOR', 'BOX'), (-.04, .04), (False, True),
+        ):
+            with self.subTest(angle=angle, gap=gap, overhangs=overhangs, cut=cut, offset=offset, top=top):
+                self.assert_shell(flight_count=3, turn_angle=angle, turn_direction='RIGHT',
+                                  landing_depth=3.0, flight_gap=gap,
+                                  landing_side_overhang=overhangs[0], landing_end_overhang=overhangs[1],
+                                  start_cut_type=cut, riser_offset=offset, cut_top=top,
+                                  use_side_ribs=True, use_top_bevel=True, use_bottom_bevel=True)
+
+    def test_flight_positions_and_landing_dimensions(self):
+        frames, landings = STAIRS._flight_layout(3, 4, 2, .2, .3, '180', 'RIGHT', 1.2, .2, .1, .3)
+        self.assertEqual(tuple(round(value, 5) for value in frames[1].translation), (2.2, -1.2, .8))
+        self.assertEqual(tuple(round(value, 5) for value in frames[2].translation), (0.0, 0.0, 1.6))
+        self.assertEqual(tuple(round(value, 5) for value in landings[0]['bounds']), (-1.1, 3.3, -2.7, -1.2))
+        frames, landings = STAIRS._flight_layout(2, 4, 2, .2, .3, '90', 'RIGHT', 1.2, .2, .1, .3)
+        self.assertEqual(tuple(round(value, 5) for value in frames[1].translation), (1.2, -2.4, .8))
+        self.assertEqual(tuple(round(value, 5) for value in landings[0]['bounds']), (-1.1, 1.2, -3.7, -1.2))
+
+    def test_landing_shading_controls(self):
+        mesh = self.mesh(flight_count=3, turn_angle='90', flight_gap=.2, landing_depth=1.2,
+                         landing_side_overhang=.1, landing_end_overhang=.1,
+                         use_top_bevel=True, use_bottom_bevel=True,
+                         sharp_side=False, sharp_reinforcement=False, sharp_top_end=False,
+                         sharp_start=False, sharp_unbeveled=False, sharp_landings=False)
+        try:
+            self.assertTrue(all(face.use_smooth for face in mesh.polygons))
+            self.assertFalse(any(edge.use_edge_sharp for edge in mesh.edges))
+            self.assertEqual({item.value for item in mesh.attributes['stair_flight'].data}, {-1, 0, 1, 2})
+            self.assertAlmostEqual(max(vertex.co.z for vertex in mesh.vertices), 2.4, places=5)
+        finally:
+            bpy.data.meshes.remove(mesh)
+
+    def test_landing_bevel_variants(self):
+        for angle, flags, width, ribs in itertools.product(
+            ('90', '180'), ((True, False), (False, True), (True, True)), (.025, .5), (False, True),
+        ):
+            with self.subTest(angle=angle, flags=flags, width=width, ribs=ribs):
+                self.assert_shell(flight_count=3, turn_angle=angle, turn_direction='LEFT',
+                                  landing_depth=1.4, flight_gap=.15, landing_side_overhang=0.0,
+                                  landing_end_overhang=0.0, use_side_ribs=ribs, riser_offset=-.04,
+                                  use_top_bevel=flags[0], use_bottom_bevel=flags[1],
+                                  top_bevel_width=width, bottom_bevel_width=width,
+                                  top_bevel_segments=1, bottom_bevel_segments=4,
+                                  top_bevel_profile=.25, bottom_bevel_profile=.75)
+
+    def test_invalid_layout_creates_no_mesh(self):
+        count = len(bpy.data.meshes)
+        for options in (dict(flight_count=0), dict(turn_angle='45'),
+                        dict(flight_count=2, flight_gap=0.0), dict(landing_depth=0.0),
+                        dict(landing_side_overhang=-.1), dict(landing_end_overhang=-.1)):
+            with self.subTest(options=options), self.assertRaises(ValueError):
+                self.mesh(**options)
+        self.assertEqual(len(bpy.data.meshes), count)
+
+    def test_first_step_has_no_lower_bevel(self):
+        for angle, direction, ribs, top, offset in itertools.product(
+            ('90', '180'), ('LEFT', 'RIGHT'), (False, True), (False, True), (-.04, 0.0, .04),
+        ):
+            with self.subTest(angle=angle, direction=direction, ribs=ribs, top=top, offset=offset):
+                mesh = self.mesh(flight_count=3, turn_angle=angle, turn_direction=direction,
+                                 flight_gap=.2, landing_depth=1.2, use_side_ribs=ribs, cut_top=top,
+                                 riser_offset=offset, use_top_bevel=True, use_bottom_bevel=True,
+                                 sharp_start=False, sharp_unbeveled=True)
+                try:
+                    frames, _ = STAIRS._flight_layout(3, 4, 2, .2, .3, angle, direction, 1.2, .2, 0, 0)
+                    for index, frame in enumerate(frames):
+                        inverse = frame.inverted()
+                        coordinates = [inverse @ vertex.co for vertex in mesh.vertices]
+                        roots = [edge for edge in mesh.edges
+                                 if all(abs(coordinates[vertex].y) < 1e-5
+                                        and abs(coordinates[vertex].z) < 1e-5
+                                        and abs(coordinates[vertex].x) <= 1.00001
+                                        for vertex in edge.vertices)]
+                        self.assertTrue(roots, f'Missing original first-step join on flight {index}')
+                        self.assertAlmostEqual(sum((coordinates[edge.vertices[1]] - coordinates[edge.vertices[0]]).length
+                                                   for edge in roots), 2.0, places=5)
+                        if index > 0:
+                            self.assertTrue(all(edge.use_edge_sharp for edge in roots))
+                        # The next tread/riser junction must still be rounded.
+                        self.assertFalse(any(all(abs(coordinates[vertex].y + .3) < 1e-5
+                                                 and abs(coordinates[vertex].z - .2) < 1e-5
+                                                 for vertex in edge.vertices) for edge in mesh.edges))
+                    bm = bmesh.new()
+                    try:
+                        bm.from_mesh(mesh)
+                        self.assertTrue(all(len(edge.link_faces) == 2 for edge in bm.edges))
+                    finally:
+                        bm.free()
+                finally:
+                    bpy.data.meshes.remove(mesh)
 
 
 if __name__ == '__main__':

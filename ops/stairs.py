@@ -3,6 +3,7 @@ import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty
 from bpy.types import Operator
 from bpy_extras.object_utils import AddObjectHelper, object_data_add
+from mathutils import Matrix
 
 
 EPSILON = 0.000001
@@ -32,7 +33,8 @@ def _add_face(indices, faces, lookup):
 
 
 def _stair_shell(step_count, width, riser, tread, slab_height, use_side_ribs,
-                 rib_width, rib_z_offset, cut_top, riser_offset):
+                 rib_width, rib_z_offset, cut_top, riser_offset,
+                 open_start=False, open_end=False):
     """Triangular steps on one continuous slab, with no internal interfaces."""
     half_width = width / 2
     ribs = use_side_ribs and rib_width > EPSILON and rib_z_offset > EPSILON
@@ -55,7 +57,9 @@ def _stair_shell(step_count, width, riser, tread, slab_height, use_side_ribs,
             _add_face([vertex(points[name], half_width) for name in reversed(cap)], faces, face_lookup)
 
         def surface_vertex(name, x):
-            if ribs and not cut_top and name not in ('A', 'E'):
+            connection = ((open_start and index == 0 and name == 'B')
+                          or (open_end and index == step_count - 1 and name == 'D'))
+            if ribs and not cut_top and name not in ('A', 'E') and not connection:
                 if abs(x - rib_x[1]) <= EPSILON:
                     x = -half_width
                 elif abs(x - rib_x[2]) <= EPSILON:
@@ -63,9 +67,9 @@ def _stair_shell(step_count, width, riser, tread, slab_height, use_side_ribs,
             return vertex(points[name], x)
 
         edges = [('B', 'C'), ('C', 'D'), ('E', 'A')]
-        if index == 0:
+        if index == 0 and not open_start:
             edges.append(('A', 'B'))
-        if index == step_count - 1:
+        if index == step_count - 1 and not open_end:
             edges.append(('D', 'E'))
         for first, second in edges:
             x_values = rib_x if ribs else (-half_width, half_width)
@@ -148,13 +152,20 @@ def _cut_start(bm, cut_type, cut_width, tread, edge_flow):
             bmesh.ops.dissolve_edges(bm, edges=top_cuts, use_verts=False, use_face_split=False)
 
 
-def _bevel_step_corners(bm, upper, width, segments, profile):
+def _bevel_step_corners(bm, upper, width, segments, profile, flight_layer=None, flight_id=None):
     if width <= EPSILON:
         return
     bm.normal_update()
     edges = []
     for edge in bm.edges:
         if len(edge.link_faces) != 2 or edge.is_convex != upper:
+            continue
+        if flight_layer is not None and not any(face[flight_layer] == flight_id for face in edge.link_faces):
+            continue
+        # Each flight is processed in its own local frame. Its first riser
+        # meets the floor/landing at Y=0, Z=0 and must keep that original edge.
+        if not upper and all(abs(vertex.co.y) <= EPSILON and abs(vertex.co.z) <= EPSILON
+                             for vertex in edge.verts):
             continue
         direction = edge.verts[1].co - edge.verts[0].co
         normals = [face.normal for face in edge.link_faces]
@@ -163,8 +174,11 @@ def _bevel_step_corners(bm, upper, width, segments, profile):
                 and any(normal.y > EPSILON and abs(normal.x) < EPSILON for normal in normals)):
             edges.append(edge)
     if edges:
-        bmesh.ops.bevel(bm, geom=edges, offset=width, segments=segments, profile=profile,
-                        affect='EDGES', clamp_overlap=True, loop_slide=True)
+        result = bmesh.ops.bevel(bm, geom=edges, offset=width, segments=segments, profile=profile,
+                                 affect='EDGES', clamp_overlap=True, loop_slide=True)
+        if flight_layer is not None:
+            for face in result['faces']:
+                face[flight_layer] = flight_id
         bmesh.ops.remove_doubles(bm, verts=list(bm.verts), dist=EPSILON)
         bmesh.ops.dissolve_degenerate(bm, edges=list(bm.edges), dist=EPSILON)
         bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
@@ -172,14 +186,19 @@ def _bevel_step_corners(bm, upper, width, segments, profile):
 
 def _shade_stairs(bm, width, riser, tread, step_count, cut_type, cut_width,
                   smooth, sharp_side, sharp_reinforcement, sharp_top_end, sharp_start,
-                  sharp_unbeveled, top_rounded, bottom_rounded):
+                  sharp_unbeveled, top_rounded, bottom_rounded,
+                  flight_layer=None, flight_id=None):
     bm.normal_update()
     half_width = width / 2
     front_planes = (0.0, -min(cut_width, tread)) if cut_type == 'BOX' else (0.0,)
     for face in bm.faces:
-        face.smooth = smooth
+        if flight_layer is None:
+            face.smooth = smooth
     for edge in bm.edges:
-        edge.smooth = True
+        if flight_layer is None:
+            edge.smooth = True
+        elif not any(face[flight_layer] == flight_id for face in edge.link_faces):
+            continue
         if len(edge.link_faces) != 2 or edge.calc_face_angle(0.0) <= 0.0001:
             continue
         vertices = edge.verts
@@ -202,11 +221,119 @@ def _shade_stairs(bm, width, riser, tread, step_count, cut_type, cut_width,
         step_corner = (abs(direction.y) <= EPSILON and abs(direction.z) <= EPSILON
                        and any(normal.z > 1 - EPSILON for normal in normals)
                        and any(normal.y > EPSILON and abs(normal.x) < EPSILON for normal in normals))
-        unrounded = step_corner and not (top_rounded if edge.is_convex else bottom_rounded)
+        first_step_base = all(abs(vertex.co.y) <= EPSILON and abs(vertex.co.z) <= EPSILON
+                              for vertex in vertices)
+        unrounded = step_corner and (first_step_base or not (top_rounded if edge.is_convex else bottom_rounded))
         if ((sharp_side and side) or (sharp_reinforcement and longitudinal)
                 or (sharp_top_end and top_end) or (sharp_start and start)
                 or (sharp_unbeveled and unrounded)):
             edge.smooth = False
+
+
+def _flight_layout(flight_count, step_count, width, riser, tread, turn_angle,
+                    turn_direction, landing_depth, flight_gap, side_overhang, end_overhang):
+    """Exact orthogonal flight frames and landing bounds in the incoming frame."""
+    frames, landings = [], []
+    origin, x_axis, y_axis = (0.0, 0.0, 0.0), (1, 0), (0, 1)
+    sign = 1 if turn_direction == 'RIGHT' else -1
+    length, height = step_count * tread, step_count * riser
+    for index in range(flight_count):
+        frame = Matrix(((x_axis[0], y_axis[0], 0, origin[0]),
+                        (x_axis[1], y_axis[1], 0, origin[1]),
+                        (0, 0, 1, origin[2]), (0, 0, 0, 1)))
+        frames.append(frame)
+        if index == flight_count - 1:
+            break
+        if turn_angle == '180':
+            next_x, next_y = sign * (width + flight_gap), -length
+            x0 = min(-width / 2, next_x - width / 2) - side_overhang
+            x1 = max(width / 2, next_x + width / 2) + side_overhang
+            depth = landing_depth
+            openings = [('NEAR', -width / 2, width / 2),
+                        ('NEAR', next_x - width / 2, next_x + width / 2)]
+            next_x_axis = tuple(-value for value in x_axis)
+            next_y_axis = tuple(-value for value in y_axis)
+        else:
+            next_x = sign * (width / 2 + flight_gap)
+            next_y = -length - width / 2 - flight_gap
+            depth = max(landing_depth, width + flight_gap)
+            x0 = -width / 2 - side_overhang if sign > 0 else next_x
+            x1 = next_x if sign > 0 else width / 2 + side_overhang
+            openings = [('NEAR', -width / 2, width / 2),
+                        ('RIGHT' if sign > 0 else 'LEFT', next_y - width / 2, next_y + width / 2)]
+            next_x_axis = tuple(sign * value for value in y_axis)
+            next_y_axis = tuple(-sign * value for value in x_axis)
+        landings.append(dict(frame=frame, bounds=(x0, x1, -length - depth - end_overhang, -length),
+                             height=height, openings=openings))
+        origin = (origin[0] + x_axis[0] * next_x + y_axis[0] * next_y,
+                  origin[1] + x_axis[1] * next_x + y_axis[1] * next_y,
+                  origin[2] + height)
+        x_axis, y_axis = next_x_axis, next_y_axis
+    return frames, landings
+
+
+def _landing_shell(bounds, height, slab_height, openings, rib_width):
+    """Grid a flat slab with precisely matching flight apertures in its sides."""
+    x0, x1, y0, y1 = bounds
+    xs, ys = {x0, x1}, {y0, y1}
+    for side, start, end in openings:
+        cuts = (start, start + rib_width, end - rib_width, end) if rib_width > EPSILON else (start, end)
+        (xs if side == 'NEAR' else ys).update(cuts)
+    xs, ys = sorted(xs), sorted(ys)
+    vertices, faces, lookup, face_lookup = [], [], {}, set()
+
+    def vertex(x, y, z):
+        return _add_vertex((x, y, z), vertices, lookup)
+
+    def open_interval(side, start, end):
+        return any(candidate == side and start >= low - EPSILON and end <= high + EPSILON
+                   for candidate, low, high in openings)
+
+    low = height - slab_height
+    for left, right in zip(xs, xs[1:]):
+        for near, far in zip(ys, ys[1:]):
+            for z in (low, height):
+                _add_face([vertex(left, near, z), vertex(right, near, z),
+                           vertex(right, far, z), vertex(left, far, z)], faces, face_lookup)
+        for y, side in ((y0, 'FAR'), (y1, 'NEAR')):
+            if not open_interval(side, left, right):
+                _add_face([vertex(left, y, low), vertex(right, y, low),
+                           vertex(right, y, height), vertex(left, y, height)], faces, face_lookup)
+    for near, far in zip(ys, ys[1:]):
+        for x, side in ((x0, 'LEFT'), (x1, 'RIGHT')):
+            if not open_interval(side, near, far):
+                _add_face([vertex(x, near, low), vertex(x, far, low),
+                           vertex(x, far, height), vertex(x, near, height)], faces, face_lookup)
+    return vertices, faces
+
+
+def _multi_flight_shell(frames, landings, step_count, width, riser, tread, slab_height,
+                        use_side_ribs, rib_width, rib_z_offset, cut_top, riser_offset):
+    vertices, faces, lookup, face_lookup, owners = [], [], {}, set(), []
+
+    def append(part_vertices, part_faces, frame, owner):
+        remap = []
+        for x, y, z in part_vertices:
+            world = (frame[0][0] * x + frame[0][1] * y + frame[0][3],
+                     frame[1][0] * x + frame[1][1] * y + frame[1][3], z + frame[2][3])
+            remap.append(_add_vertex(world, vertices, lookup))
+        for face in part_faces:
+            before = len(faces)
+            _add_face([remap[index] for index in face], faces, face_lookup)
+            if len(faces) != before:
+                owners.append(owner)
+
+    for index, frame in enumerate(frames):
+        part = _stair_shell(step_count, width, riser, tread, slab_height, use_side_ribs,
+                            rib_width, rib_z_offset, cut_top, riser_offset,
+                            open_start=index > 0, open_end=index < len(frames) - 1)
+        append(*part, frame, index)
+    connection_rib = rib_width if use_side_ribs and rib_z_offset > EPSILON else 0.0
+    for landing in landings:
+        part = _landing_shell(landing['bounds'], landing['height'], slab_height,
+                               landing['openings'], connection_rib)
+        append(*part, landing['frame'], -1)
+    return vertices, faces, owners
 
 
 def build_stair_mesh(
@@ -218,29 +345,73 @@ def build_stair_mesh(
     bottom_bevel_width=0.01, bottom_bevel_segments=3, bottom_bevel_profile=0.5,
     use_smooth_shading=True, sharp_side=True, sharp_reinforcement=True,
     sharp_top_end=True, sharp_start=True, sharp_unbeveled=True,
+    flight_count=1, turn_angle='180', turn_direction='RIGHT', landing_depth=1.2,
+    flight_gap=0.2, landing_side_overhang=0.0, landing_end_overhang=0.0,
+    sharp_landings=True,
 ):
     if tread + riser_offset <= EPSILON:
         raise ValueError('Riser Offset must be greater than -Tread')
     if slab_height <= EPSILON:
         raise ValueError('Slab Height must be positive; the slab is a required component')
+    if flight_count < 1 or turn_angle not in ('90', '180') or turn_direction not in ('LEFT', 'RIGHT'):
+        raise ValueError('Choose at least one flight, a 90/180 degree turn and Left or Right')
+    if landing_depth <= EPSILON or landing_side_overhang < 0 or landing_end_overhang < 0:
+        raise ValueError('Landing depth must be positive and overhangs cannot be negative')
+    if flight_count > 1 and flight_gap < 0.001 - EPSILON:
+        raise ValueError('Flight Gap must be at least 1 mm to keep adjacent flights separate')
     rib_width = min(max(rib_width, 0.0), max(0.0, width / 2 - EPSILON))
-    vertices, faces = _stair_shell(step_count, width, riser, tread, slab_height,
-                                    use_side_ribs, rib_width, rib_z_offset, cut_top, riser_offset)
+    frames, landings = _flight_layout(flight_count, step_count, width, riser, tread,
+                                      turn_angle, turn_direction, landing_depth, flight_gap,
+                                      landing_side_overhang, landing_end_overhang)
+    if flight_count == 1:
+        vertices, faces = _stair_shell(step_count, width, riser, tread, slab_height,
+                                        use_side_ribs, rib_width, rib_z_offset, cut_top, riser_offset)
+        owners = None
+    else:
+        vertices, faces, owners = _multi_flight_shell(
+            frames, landings, step_count, width, riser, tread, slab_height,
+            use_side_ribs, rib_width, rib_z_offset, cut_top, riser_offset)
     mesh = bpy.data.meshes.new(name)
     bm = bmesh.new()
     try:
         mesh.from_pydata(vertices, [], faces)
         bm.from_mesh(mesh)
+        flight_layer = None
+        if owners is not None:
+            flight_layer = bm.faces.layers.int.new('stair_flight')
+            for face, owner in zip(bm.faces, owners):
+                face[flight_layer] = owner
         _cut_start(bm, start_cut_type, start_cut_width, tread, start_cut_edge_flow)
         bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-        if use_top_bevel:
-            _bevel_step_corners(bm, True, top_bevel_width, top_bevel_segments, top_bevel_profile)
-        if use_bottom_bevel:
-            _bevel_step_corners(bm, False, bottom_bevel_width, bottom_bevel_segments, bottom_bevel_profile)
-        _shade_stairs(bm, width, riser, tread, step_count, start_cut_type, start_cut_width,
-                       use_smooth_shading, sharp_side, sharp_reinforcement, sharp_top_end, sharp_start,
-                       sharp_unbeveled, use_top_bevel and top_bevel_width > EPSILON,
-                       use_bottom_bevel and bottom_bevel_width > EPSILON)
+        for index, frame in enumerate(frames):
+            if flight_layer is not None:
+                bmesh.ops.transform(bm, matrix=frame.inverted(), verts=list(bm.verts))
+            if use_top_bevel:
+                _bevel_step_corners(bm, True, top_bevel_width, top_bevel_segments, top_bevel_profile,
+                                     flight_layer, index)
+            if use_bottom_bevel:
+                _bevel_step_corners(bm, False, bottom_bevel_width, bottom_bevel_segments, bottom_bevel_profile,
+                                     flight_layer, index)
+            if flight_layer is not None:
+                bmesh.ops.transform(bm, matrix=frame, verts=list(bm.verts))
+        if flight_layer is not None:
+            for face in bm.faces:
+                face.smooth = use_smooth_shading
+            for edge in bm.edges:
+                edge.smooth = not (sharp_landings and len(edge.link_faces) == 2
+                                   and all(face[flight_layer] == -1 for face in edge.link_faces)
+                                   and edge.calc_face_angle(0.0) > 0.0001)
+        for index, frame in enumerate(frames):
+            if flight_layer is not None:
+                bmesh.ops.transform(bm, matrix=frame.inverted(), verts=list(bm.verts))
+            _shade_stairs(bm, width, riser, tread, step_count,
+                           start_cut_type if index == 0 else 'NONE', start_cut_width,
+                           use_smooth_shading, sharp_side, sharp_reinforcement, sharp_top_end, sharp_start,
+                           sharp_unbeveled, use_top_bevel and top_bevel_width > EPSILON,
+                           use_bottom_bevel and bottom_bevel_width > EPSILON, flight_layer, index)
+            if flight_layer is not None:
+                bmesh.ops.transform(bm, matrix=frame, verts=list(bm.verts))
+        bm.normal_update()
         bm.to_mesh(mesh)
     except Exception:
         bpy.data.meshes.remove(mesh)
@@ -256,7 +427,21 @@ class MODULAR_ASSETS_OT_add_stairs(Operator, AddObjectHelper):
     bl_label = 'Modular Stairs'
     bl_options = {'REGISTER', 'UNDO'}
 
-    step_count: IntProperty(name='Steps', default=8, min=1, soft_max=64)
+    step_count: IntProperty(name='Steps per Flight', default=8, min=1, soft_max=64)
+    flight_count: IntProperty(name='Flights', default=1, min=1, soft_max=8, max=64,
+                              description='Number of stair flights; Steps applies to every flight')
+    turn_angle: EnumProperty(name='Turn Angle', items=(('180', '180°', 'Parallel return flights'),
+                                                     ('90', '90°', 'Quarter-turn flights')), default='180')
+    turn_direction: EnumProperty(name='Turn Direction', items=(('RIGHT', 'Right', 'Turn right while ascending'),
+                                                             ('LEFT', 'Left', 'Turn left while ascending')), default='RIGHT')
+    landing_depth: FloatProperty(name='Landing Depth', default=1.2, min=0.001, unit='LENGTH',
+                                 description='Landing depth; 90° landings use at least Width + Flight Gap')
+    flight_gap: FloatProperty(name='Flight Gap', default=0.2, min=0.001, unit='LENGTH',
+                              description='Clear space between adjacent flights; 90° turns keep this gap in both directions')
+    landing_side_overhang: FloatProperty(name='Side Overhang', default=0.0, min=0.0, unit='LENGTH',
+                                         description='Extend the exposed lateral edges of each landing')
+    landing_end_overhang: FloatProperty(name='End Overhang', default=0.0, min=0.0, unit='LENGTH',
+                                        description='Extend the far edge of each landing beyond Landing Depth')
     width: FloatProperty(name='Width', default=2.0, min=0.001, unit='LENGTH')
     riser: FloatProperty(name='Riser', default=0.2, min=0.001, unit='LENGTH')
     tread: FloatProperty(name='Tread', default=0.3, min=0.001, unit='LENGTH')
@@ -272,7 +457,7 @@ class MODULAR_ASSETS_OT_add_stairs(Operator, AddObjectHelper):
     top_bevel_width: FloatProperty(name='Width', default=0.01, min=0.0, soft_max=0.1, unit='LENGTH')
     top_bevel_segments: IntProperty(name='Segments', default=3, min=1, soft_max=12, max=64)
     top_bevel_profile: FloatProperty(name='Profile', default=0.5, min=0.01, max=0.99)
-    use_bottom_bevel: BoolProperty(name='Lower Bevel', default=False, description='Round the concave tread/riser junctions')
+    use_bottom_bevel: BoolProperty(name='Lower Bevel', default=False, description='Round the concave tread/riser junctions, except the first step of each flight')
     bottom_bevel_width: FloatProperty(name='Width', default=0.01, min=0.0, soft_max=0.1, unit='LENGTH')
     bottom_bevel_segments: IntProperty(name='Segments', default=3, min=1, soft_max=12, max=64)
     bottom_bevel_profile: FloatProperty(name='Profile', default=0.5, min=0.01, max=0.99)
@@ -282,6 +467,7 @@ class MODULAR_ASSETS_OT_add_stairs(Operator, AddObjectHelper):
     sharp_top_end: BoolProperty(name='Upper End', default=True, description='Sharp perimeter of the upper end face')
     sharp_start: BoolProperty(name='Front / Cut Faces', default=True, description='Sharp exposed front and cut contours; includes the riser/slab join when the riser is offset')
     sharp_unbeveled: BoolProperty(name='Unbeveled Corners', default=True, description='Keep tread/riser corners sharp when their bevel is disabled')
+    sharp_landings: BoolProperty(name='Landing Borders', default=True, description='Sharp outer borders of the landing slabs')
     start_cut_type: EnumProperty(name='Cut Type', items=(('NONE', 'None', 'Do not cut'), ('FLOOR', 'Floor Cut', 'Clip at Z=0'), ('BOX', 'Box Cut', 'Cut the start below Z=0')), default='NONE')
     start_cut_width: FloatProperty(name='Cut Width', default=0.1, min=0.0, unit='LENGTH')
     start_cut_edge_flow: EnumProperty(name='Cut Edge Flow', items=(('CORNER', 'Corner', 'Keep the top surface continuous'), ('THROUGH', 'Through', 'Continue cut edges through the top')), default='THROUGH')
@@ -292,6 +478,15 @@ class MODULAR_ASSETS_OT_add_stairs(Operator, AddObjectHelper):
 
     def draw(self, context):
         layout = self.layout
+        layout.prop(self, 'flight_count')
+        landing = layout.column()
+        landing.enabled = self.flight_count > 1
+        for name in ('turn_angle', 'turn_direction', 'landing_depth', 'flight_gap',
+                     'landing_side_overhang', 'landing_end_overhang'):
+            landing.prop(self, name)
+        if self.flight_count > 1 and self.turn_angle == '90' and self.landing_depth < self.width + self.flight_gap:
+            landing.label(text='90° depth ≥ Width + Flight Gap')
+        layout.separator()
         for name in ('step_count', 'width', 'riser', 'tread', 'riser_offset', 'slab_height'):
             layout.prop(self, name)
         layout.prop(self, 'use_side_ribs')
@@ -311,7 +506,7 @@ class MODULAR_ASSETS_OT_add_stairs(Operator, AddObjectHelper):
         shading = layout.column()
         shading.enabled = self.use_smooth_shading
         shading.label(text='Mark Sharp:')
-        for name in ('sharp_side', 'sharp_reinforcement', 'sharp_top_end', 'sharp_start', 'sharp_unbeveled'):
+        for name in ('sharp_side', 'sharp_reinforcement', 'sharp_top_end', 'sharp_start', 'sharp_unbeveled', 'sharp_landings'):
             shading.prop(self, name)
         layout.separator()
         layout.prop(self, 'start_cut_type')
@@ -328,6 +523,8 @@ class MODULAR_ASSETS_OT_add_stairs(Operator, AddObjectHelper):
             'top_bevel_segments', 'top_bevel_profile', 'use_bottom_bevel',
             'bottom_bevel_width', 'bottom_bevel_segments', 'bottom_bevel_profile',
             'use_smooth_shading', 'sharp_side', 'sharp_reinforcement', 'sharp_top_end', 'sharp_start', 'sharp_unbeveled',
+            'flight_count', 'turn_angle', 'turn_direction', 'landing_depth', 'flight_gap',
+            'landing_side_overhang', 'landing_end_overhang', 'sharp_landings',
         )
         try:
             mesh = build_stair_mesh('Modular_Stairs_Mesh', **{name: getattr(self, name) for name in parameters})
