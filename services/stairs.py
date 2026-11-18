@@ -16,7 +16,7 @@ SYSTEM_FIELDS = tuple(name for name in signature(build_railing_system_meshes).pa
 PLATE_FIELDS = tuple(name for name in signature(build_tread_plate_mesh).parameters if name not in ('name', 'stairs'))
 INPUT_FIELDS = STAIR_FIELDS + RAIL_FIELDS + SYSTEM_FIELDS + PLATE_FIELDS + ('rail_enabled',)
 _REBUILDING = set()
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 13
 PART_NAMES = {'handrail': 'Handrail', 'lower_rails': 'Infill Rails', 'posts': 'Posts',
               'connectors': 'Handrail Supports', 'couplings': 'Coupling Sleeves',
               'handrail_corners': 'Handrail Corner Connectors', 'infill_corners': 'Infill Corner Connectors',
@@ -145,6 +145,17 @@ def request_railing_material_rebuild(settings, context):
     request_rebuild(settings, context)
 
 
+def _post_layout_values(settings):
+    values = {name: getattr(settings, name) for name in (
+        'rail_post_every_steps', 'rail_post_step_mode', 'rail_landing_post_auto', 'rail_landing_post_spacing')}
+    if not settings.is_property_set('rail_post_every_steps'):
+        step_length = (settings.tread ** 2 + settings.riser ** 2) ** .5
+        values['rail_post_every_steps'] = max(1, int(settings.rail_post_spacing / step_length + 1e-6))
+    if not settings.is_property_set('rail_landing_post_spacing'):
+        values['rail_landing_post_spacing'] = settings.rail_post_spacing
+    return values
+
+
 def rebuild_stairs(root):
     if root.type != 'MESH' or not root.modular_stairs.is_stairs:
         raise ValueError('Select a configured stairs object')
@@ -161,6 +172,9 @@ def rebuild_stairs(root):
     prepared = {}
     try:
         if settings.schema_version < SCHEMA_VERSION:
+            for name, value in _post_layout_values(settings).items():
+                if not settings.is_property_set(name):
+                    setattr(settings, name, value)
             if not settings.is_property_set('rail_cap_bevel_ends'):
                 settings.rail_cap_bevel_ends = bool(settings.get('rail_cap_bevel_start', False)
                                                    or settings.get('rail_cap_bevel_end', False))
@@ -301,6 +315,7 @@ def create_stairs(context, source=None):
     settings.auto_update = False
     source_settings = source.modular_stairs if source is not None else settings
     values = {name: getattr(source_settings, name) for name in INPUT_FIELDS}
+    values.update(_post_layout_values(source_settings))
     if not source_settings.is_property_set('rail_top_rail_height'):
         values['rail_top_rail_height'] = min(.015, source_settings.rail_base_rail_height * .5)
     # Write defaults as well: future addon defaults must not change a saved asset.

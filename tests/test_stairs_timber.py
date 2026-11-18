@@ -137,8 +137,8 @@ class TimberTest(unittest.TestCase):
                     centers = [sum((mesh.vertices[i].co for i in ring), Vector()) / 8
                                for ring in (group[:8], group[-8:])]
                     positions = sorted(-p.y / abs(direction.y) for p in centers)
-                    self.assertAlmostEqual(positions[0], .07, places=5)
-                    self.assertAlmostEqual(positions[1], length - .13, places=5)
+                    self.assertAlmostEqual(positions[0], Vector((0, -.3, .2)).length / 2, places=5)
+                    self.assertAlmostEqual(positions[1], length - Vector((0, -.3, .2)).length / 2, places=5)
 
     def test_turns_wall_mounts_split_and_bevel_clamping(self):
         root = self.create(flight_count=3, rail_cap_split=True, rail_cap_max_length=1.0,
@@ -171,7 +171,7 @@ class TimberTest(unittest.TestCase):
                 settings['rail_cap_end_bevel_width'] = .007
                 settings.auto_update = True
                 self.assertFalse(settings.last_error, settings.last_error)
-                self.assertEqual(settings.schema_version, 11)
+                self.assertEqual(settings.schema_version, 13)
                 self.assertEqual(settings.rail_cap_bevel_ends, start or end)
                 self.assertAlmostEqual(settings.rail_cap_ends_bevel_width,
                                        .007 if end else .003 if start else .002)

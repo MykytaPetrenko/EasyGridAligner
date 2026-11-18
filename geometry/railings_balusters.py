@@ -1,10 +1,11 @@
 """Shared Type 3/4 metal frames beneath timber caps or returned metal handrails."""
-from math import ceil, sqrt
+from math import sqrt
 
 import bpy
 from mathutils import Vector
 
-from .railing_parts import _clean_path, _closest_on_path, _extend_path, _make_mesh, _railing_route, _trim_path
+from .railing_parts import _clean_path, _closest_on_path, _extend_path, _make_mesh, _railing_route, _trim_path, _cut_rail_caps
+from .railing_layout import plan_railing_posts, fixed_bay_infill, post_bounded_rail_path
 from .railing_timber import append_timber_cap
 from .railing_returns import append_returned_handrail, returned_handrail_path
 from .railings_rectangular import _append_loft, _corner_geometry, _rect_offsets
@@ -56,8 +57,10 @@ def _segment_axes(start, end):
 def build_baluster_railing_meshes(
     stairs, rail_left=True, rail_right=True, rail_outer_enabled=True,
     rail_height=1.05, rail_inset=.08, rail_post_spacing=.9, rail_post_size=.04,
+    rail_post_every_steps=2, rail_post_step_mode='BALANCED',
+    rail_landing_post_auto=True, rail_landing_post_spacing=.6,
     rail_type3_handrail_width=.065, rail_type3_handrail_thickness=.04,
-    rail_baluster_spacing=.12, rail_baluster_width=.016, rail_baluster_depth=.025,
+    rail_baluster_spacing=.12, rail_baluster_width=.016, rail_baluster_depth=.025, rail_baluster_dense=False,
     rail_base_rail_width=.03, rail_base_rail_height=.035, rail_base_clearance=.05,
     rail_top_rail_height=.015,
     rail_corner_length=.06, handrail_only=False,
@@ -105,11 +108,16 @@ def build_baluster_railing_meshes(
     for side, enabled in ((-1, rail_left), (1, rail_right)):
         if not enabled or (stairs['flight_count'] > 1 and not rail_outer_enabled and side != inner):
             continue
-        route, bases = _railing_route(stairs, frames, landings, side, rail_inset,
+        route, _ = _railing_route(stairs, frames, landings, side, rail_inset,
                                          rail_corner_length, rail_post_spacing)
         cap_route = (returned_handrail_path(route, rail_type3_handrail_width, rail_type3_handrail_thickness,
                                              return_radius, return_segments) if metal_handrail else
                      _extend_path(route, rail_start_extension, rail_end_extension))
+        if metal_handrail and not handrail_only and stairs.get('railing_start_on_landing', False):
+            # An open upper flight starts with a mandatory landing post. Keep
+            # the straight handrail over its full shaft before forming the return.
+            direction = (route[1] - route[0]).normalized()
+            cap_route[0] = route[0] - direction * ((rail_post_size / 2 + .005) / direction.xy.length)
         cap_path = [point + UP * rail_height for point in cap_route]
         cap_rings = _mitered_bar_rings(cap_path, rail_type3_handrail_width, rail_type3_handrail_thickness)
         if metal_handrail:
@@ -122,7 +130,9 @@ def build_baluster_railing_meshes(
                               **(cap_options or {}))
         if metal_handrail and handrail_only:
             continue
-        controls = route if metal_handrail else _trim_path(route, rail_infill_start_setback, rail_infill_end_setback)
+        terminal_tread = sqrt(stairs['tread'] ** 2 + stairs['riser'] ** 2) / 2
+        start_setback = 0 if stairs.get('railing_start_on_landing', False) else min(rail_infill_start_setback, terminal_tread)
+        controls = route if metal_handrail else _trim_path(route, start_setback, min(rail_infill_end_setback, terminal_tread))
         # Offset within the cross-section, perpendicular to each run. This
         # shares the timber underside plane on slopes and at mitered turns.
         if not metal_handrail:
@@ -131,28 +141,16 @@ def build_baluster_railing_meshes(
                                 -(rail_type3_handrail_thickness + rail_top_rail_height) / 2)
         if handrail_only:
             continue
-        if not metal_handrail:
-            _append_mitered_bar(metal, [point + UP * base_offset for point in controls],
-                                rail_base_rail_width, rail_base_rail_height)
-        # Posts anchor to actual tread tops. Add corner posts on flat landings.
-        for previous, point, following in zip(controls, controls[1:], controls[2:]):
-            if abs(previous.z - point.z) < EPSILON and abs(following.z - point.z) < EPSILON:
-                bases.append(point)
-        post_centers, post_stations = [], []
-        stations = [0.0]
-        for first, last in zip(controls, controls[1:]):
-            stations.append(stations[-1] + (last - first).length)
-        segment_stations = {tuple(point): station for point, station in zip(controls, stations)}
-        for base in bases:
-            target, segment = _closest_on_path(base - UP * stairs['riser'] / 2, controls, with_segment=True)
-            original_target = _closest_on_path(base - UP * stairs['riser'] / 2, route)
-            if (target - original_target).length > EPSILON:
-                continue
-            if any((target - existing).length < max(.1, rail_post_size * 2) for existing in post_centers):
-                continue
+        placements = plan_railing_posts(
+            stairs, frames, landings, controls, side, rail_inset, rail_corner_length,
+            rail_post_every_steps, rail_post_step_mode, rail_landing_post_auto,
+            rail_landing_post_spacing, rail_post_size)
+        post_centers = []
+        for placement in placements:
+            base = placement.base
+            target, segment = _closest_on_path(placement.target, controls, with_segment=True)
             post_centers.append(target)
-            post_stations.append(segment_stations[tuple(segment[0])] + (target - segment[0]).length)
-            across, along, gradient, scale = _segment_axes(*segment)
+            across, along, gradient, scale = _segment_axes(*placement.segment)
             # Wide posts reach the metal top rail's upper plane; thin balusters stop below it.
             top = target.z + rail_height - rail_type3_handrail_thickness * scale / 2
             if top <= base.z + .025:
@@ -164,43 +162,21 @@ def build_baluster_railing_meshes(
                          (rail_post_size * 1.8, flange_top, None),
                          (rail_post_size, flange_top, None), (rail_post_size, top, gradient))]
             _append_loft(metal, rings)
-        if metal_handrail:
-            # A single-post section has no bay to fill below the handrail.
-            if not post_stations or max(post_stations) - min(post_stations) <= EPSILON:
-                continue
-            controls = _trim_path(controls, min(post_stations), stations[-1] - max(post_stations))
-            bottom_path = [point + UP * base_offset for point in controls]
-            bottom_rings = _mitered_bar_rings(bottom_path, rail_base_rail_width, rail_base_rail_height)
-            # Cut the two rail ends vertically through the terminal posts instead
-            # of letting sloped cross-section corners protrude past their centers.
-            for index, start, end in ((0, bottom_path[0], bottom_path[1]),
-                                      (-1, bottom_path[-1], bottom_path[-2])):
-                direction = end - start
-                horizontal = direction.copy()
-                horizontal.z = 0
-                horizontal.normalize()
-                for vertex in bottom_rings[index]:
-                    vertex -= direction * ((vertex - start).dot(horizontal) / direction.dot(horizontal))
-            _append_loft(metal, bottom_rings)
-        for start, end in zip(controls, controls[1:]):
-            across, along, gradient, scale = _segment_axes(start, end)
-            length = Vector((end.x - start.x, end.y - start.y, 0)).length
-            count = max(1, ceil(length / rail_baluster_spacing))
-            margin = max(rail_baluster_depth, rail_type3_handrail_width) / 2 + .005
-            for index in range(count):
-                distance = length * (index + .5) / count
-                if distance < margin or length - distance < margin:
-                    continue
-                center = start.lerp(end, distance / length)
-                if any(Vector((center.x - post.x, center.y - post.y, 0)).length
-                       < (rail_post_size + rail_baluster_depth) / 2 + .005 for post in post_centers
-                       if abs(center.z - post.z) < stairs['riser']):
-                    continue
-                bottom = center.z + base_offset + rail_base_rail_height * scale / 2
-                top = center.z + rail_height - (rail_type3_handrail_thickness / 2 + top_rail_depth) * scale
-                _append_loft(metal, [_upright_ring(center, across, along, rail_baluster_width,
-                                                  rail_baluster_depth, height, gradient)
-                                    for height in (bottom, top)])
+        controls = post_bounded_rail_path(controls, post_centers)
+        if not controls:
+            continue
+        bottom_path = [point + UP * base_offset for point in controls]
+        bottom_rings = _mitered_bar_rings(bottom_path, rail_base_rail_width, rail_base_rail_height)
+        offset = _append_loft(metal, bottom_rings)
+        _cut_rail_caps(metal, offset, bottom_path, 4)
+        for center, segment in fixed_bay_infill(controls, post_centers, rail_baluster_spacing,
+                                                rail_post_size, rail_baluster_depth, rail_baluster_dense):
+            across, along, gradient, scale = _segment_axes(*segment)
+            bottom = center.z + base_offset + rail_base_rail_height * scale / 2
+            top = center.z + rail_height - (rail_type3_handrail_thickness / 2 + top_rail_depth) * scale
+            _append_loft(metal, [_upright_ring(center, across, along, rail_baluster_width,
+                                              rail_baluster_depth, height, gradient)
+                                for height in (bottom, top)])
     if not handrail[1]:
         return {}
     vertices, faces, smooth = handrail

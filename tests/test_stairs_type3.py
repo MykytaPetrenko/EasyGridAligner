@@ -52,7 +52,9 @@ class Type3Test(unittest.TestCase):
         return [group for group in components(mesh) if len(group) == size
                 and max(mesh.vertices[i].co.z for i in group) - min(mesh.vertices[i].co.z for i in group) > .5
                 and len({(round(mesh.vertices[i].co.x, 5), round(mesh.vertices[i].co.y, 5))
-                         for i in group}) == size // 2]
+                         for i in group}) == size // 2
+                and all((mesh.vertices[group[-8 + i]].co.xy - mesh.vertices[group[-4 + i]].co.xy).length < 1e-5
+                        for i in range(4))]
 
     def test_two_slots_and_vertical_baluster_sections(self):
         root = self.create()
@@ -84,7 +86,7 @@ class Type3Test(unittest.TestCase):
         before = self.parts(root)['balustrade'].data
         count = len(self.vertical_groups(before, 8))
         posts = len(self.vertical_groups(before, 16))
-        self.configure(root, rail_baluster_spacing=.07, rail_post_spacing=3)
+        self.configure(root, rail_baluster_spacing=.07, rail_post_every_steps=8)
         after = self.parts(root)['balustrade'].data
         self.assertGreater(len(self.vertical_groups(after, 8)), count)
         self.assertLess(len(self.vertical_groups(after, 16)), posts)
@@ -150,7 +152,7 @@ class Type3Test(unittest.TestCase):
         bpy.context.view_layer.objects.active = root
         bpy.ops.modular_assets.update_stairs()
         self.assertFalse(settings.last_error)
-        self.assertEqual(settings.schema_version, 11)
+        self.assertEqual(settings.schema_version, 13)
         self.assertAlmostEqual(settings.rail_top_rail_height, .005)
 
     def test_turns_gaps_and_flight_coverage(self):
@@ -265,7 +267,7 @@ class Type3Test(unittest.TestCase):
             settings.property_unset(name)
         settings.auto_update = True
         self.assertFalse(settings.last_error)
-        self.assertEqual(settings.schema_version, 11)
+        self.assertEqual(settings.schema_version, 13)
         self.assertEqual(settings.rail_type, 'TYPE_2')
         self.assertAlmostEqual(settings.rail_handrail_width, .054)
         self.assertTrue(all(settings.is_property_set(name) for name in fields))

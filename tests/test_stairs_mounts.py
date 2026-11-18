@@ -84,7 +84,10 @@ class MountTest(unittest.TestCase):
                 self.assertEqual(len(components(parts['handrail'].data)), 1)
             self.configure(root, rail_inner_include_landings=True, rail_outer_include_landings=False)
             parts = self.parts(root)
-            self.assertEqual(len(components(parts['handrail'].data)), 3)
+            # Type 2 has a separate straight landing stub and a fixed fitting on each upper flight.
+            self.assertEqual(len(components(parts['handrail'].data)), 3 if style == 'TYPE_1' else 5)
+            if style == 'TYPE_2':
+                self.assertEqual(len(components(parts['handrail_corners'].data)), 2)
             if style == 'TYPE_1':
                 self.assertEqual(len(components(parts['wall_handrail'].data)), 1)
                 self.assertIn('wall_couplings', parts)
@@ -163,7 +166,7 @@ class MountTest(unittest.TestCase):
             settings.property_unset(name)
         settings.auto_update = True
         self.assertFalse(settings.last_error)
-        self.assertEqual(settings.schema_version, 11)
+        self.assertEqual(settings.schema_version, 13)
         self.assertEqual(settings.rail_outer_mount, 'NONE')
         self.assertEqual(settings.rail_inner_mount, 'FLIGHT')
         self.assertTrue(all(settings.is_property_set(name) for name in SYSTEM_FIELDS))

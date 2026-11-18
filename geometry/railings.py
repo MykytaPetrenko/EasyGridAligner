@@ -3,6 +3,7 @@ import bpy
 from mathutils import Vector
 
 from .stairs import _flight_layout
+from .railing_layout import plan_railing_posts, post_bounded_rail_path
 from .railings_rectangular import build_rectangular_railing_meshes
 from .railings_balusters import build_baluster_railing_meshes
 from .railing_parts import (
@@ -28,6 +29,8 @@ def build_railing_meshes(
     stairs, rail_type='TYPE_1', rail_left=True, rail_right=True, rail_height=1.05,
     rail_inset=.08, rail_radius=.025, rail_bend_radius=.09, rail_bend_segments=6,
     rail_segments=16, rail_lower_count=4, rail_lower_radius=.008, rail_lower_clearance=.12,
+    rail_post_every_steps=2, rail_post_step_mode='BALANCED',
+    rail_landing_post_auto=True, rail_landing_post_spacing=.6,
     rail_post_spacing=.9, rail_post_radius=.018, rail_connector_radius=.008,
     rail_connector_length=.07, rail_coupling_length=.045, rail_coupling_thickness=.006,
     rail_lower_segments=8, rail_post_segments=16, rail_post_match_handrail=True,
@@ -36,7 +39,7 @@ def build_railing_meshes(
     rail_handrail_width=.05, rail_handrail_thickness=.025, rail_post_size=.04,
     rail_corner_length=.06, rail_corner_allowance=.002,
     rail_type3_handrail_width=.065, rail_type3_handrail_thickness=.04,
-    rail_baluster_spacing=.12, rail_baluster_width=.016, rail_baluster_depth=.025,
+    rail_baluster_spacing=.12, rail_baluster_width=.016, rail_baluster_depth=.025, rail_baluster_dense=False,
     rail_base_rail_width=.03, rail_base_rail_height=.035, rail_base_clearance=.05,
     rail_top_rail_height=.015,
     rail_type4_handrail_width=.05, rail_type4_handrail_thickness=.012,
@@ -56,12 +59,15 @@ def build_railing_meshes(
         return build_baluster_railing_meshes(
             stairs, rail_left=rail_left, rail_right=rail_right, rail_outer_enabled=rail_outer_enabled,
             rail_height=rail_height, rail_inset=rail_inset, rail_post_spacing=rail_post_spacing,
-            rail_post_size=rail_post_size,
+            rail_post_size=rail_post_size, rail_post_every_steps=rail_post_every_steps,
+            rail_post_step_mode=rail_post_step_mode, rail_landing_post_auto=rail_landing_post_auto,
+            rail_landing_post_spacing=rail_landing_post_spacing,
             rail_type3_handrail_width=rail_type4_handrail_width if metal_handrail else rail_type3_handrail_width,
             rail_type3_handrail_thickness=rail_type4_handrail_thickness if metal_handrail else rail_type3_handrail_thickness,
             metal_handrail=metal_handrail, return_radius=rail_type4_return_radius,
             return_segments=rail_type4_return_segments,
             rail_baluster_spacing=rail_baluster_spacing, rail_baluster_width=rail_baluster_width,
+            rail_baluster_dense=rail_baluster_dense,
             rail_baluster_depth=rail_baluster_depth, rail_base_rail_width=rail_base_rail_width,
             rail_base_rail_height=rail_base_rail_height, rail_base_clearance=rail_base_clearance,
             rail_top_rail_height=rail_top_rail_height,
@@ -82,7 +88,9 @@ def build_railing_meshes(
             rail_corner_length=rail_corner_length, rail_corner_allowance=rail_corner_allowance,
             rail_lower_count=rail_lower_count, rail_lower_radius=rail_lower_radius,
             rail_lower_clearance=rail_lower_clearance, rail_lower_segments=rail_lower_segments,
-            rail_post_spacing=rail_post_spacing, rail_connector_radius=rail_connector_radius,
+            rail_post_spacing=rail_post_spacing, rail_post_every_steps=rail_post_every_steps,
+            rail_post_step_mode=rail_post_step_mode, rail_landing_post_auto=rail_landing_post_auto,
+            rail_landing_post_spacing=rail_landing_post_spacing, rail_connector_radius=rail_connector_radius,
             rail_connector_length=rail_connector_length, rail_connector_mode=rail_connector_mode,
             rail_connector_segments=rail_connector_segments, rail_connector_match_post=rail_connector_match_post,
             handrail_only=handrail_only, rail_start_extension=rail_start_extension,
@@ -117,8 +125,14 @@ def build_railing_meshes(
     for side, enabled in ((-1, rail_left), (1, rail_right)):
         if not enabled or (stairs['flight_count'] > 1 and not rail_outer_enabled and side != inner_side):
             continue
-        controls, post_bases = _railing_route(stairs, frames, landings, side, rail_inset,
+        controls, _ = _railing_route(stairs, frames, landings, side, rail_inset,
                                              rail_bend_radius, rail_post_spacing)
+        placements = [] if handrail_only else plan_railing_posts(
+            stairs, frames, landings, controls, side, rail_inset, rail_bend_radius,
+            rail_post_every_steps, rail_post_step_mode, rail_landing_post_auto,
+            rail_landing_post_spacing, rail_post_radius * 2)
+        lower_controls = post_bounded_rail_path(controls, [placement.target for placement in placements],
+                                               rail_infill_start_setback, rail_infill_end_setback)
         controls = [point + Vector((0, 0, rail_height)) for point in controls]
         path, straights = _rounded_path(_extend_path(controls, rail_start_extension, rail_end_extension),
                                         rail_bend_radius, rail_bend_segments, rail_radius)
@@ -137,23 +151,19 @@ def build_railing_meshes(
         if handrail_only:
             continue
         infill_path = []
-        if rail_lower_count:
-            infill_path, _ = _rounded_path(_trim_path(controls, rail_infill_start_setback, rail_infill_end_setback),
-                                            rail_bend_radius, rail_bend_segments, rail_radius)
+        if rail_lower_count and lower_controls:
+            infill_path, _ = _rounded_path(lower_controls, rail_bend_radius, rail_bend_segments, rail_lower_radius)
         for index in range(rail_lower_count):
             height = rail_lower_clearance + (rail_height - .1 - rail_lower_clearance) * (index + 1) / (rail_lower_count + 1)
-            lower = [point + Vector((0, 0, height - rail_height)) for point in infill_path]
-            _append_tube(parts['lower_rails'], lower, rail_lower_radius, rail_lower_segments)
-        placed = []
-        for base in post_bases:
-            if any((base - previous).length < .2 for previous in placed):
-                continue
-            placed.append(base)
-            target = _closest_on_path(base + Vector((0, 0, rail_height - stairs['riser'] / 2)), path)
+            lower = [point + Vector((0, 0, height)) for point in infill_path]
+            _append_tube(parts['lower_rails'], lower, rail_lower_radius, rail_lower_segments, vertical_caps=(True, True))
+        for placement in placements:
+            base = placement.base
+            target = _closest_on_path(placement.target + Vector((0, 0, rail_height)), path)
             top_z = target.z - rail_radius - rail_connector_length
             if top_z <= base.z + .025:
                 raise ValueError('Railing Height leaves no room for a post at the landing')
-            top = Vector((target.x, target.y, top_z))
+            top = Vector((base.x, base.y, top_z))
             neck_end = Vector((target.x, target.y, target.z - rail_radius * .65))
             flange_top = base.z + .012
             collar_height = min(.018, (top_z - flange_top) * .4)
@@ -168,7 +178,13 @@ def build_railing_meshes(
                                 (neck_end.z, rail_connector_radius)))
             else:
                 _append_tube(parts['connectors'], (top, neck_end), rail_connector_radius, support_sides)
-            _append_post(parts['posts'], target, profile, post_sides)
+            _append_post(parts['posts'], base, profile, post_sides)
+            if rail_connector_mode == 'INTEGRATED':
+                # Keep the foot on its landmark and lean only the stem toward a rounded elbow.
+                vertices = parts['posts'][0]
+                for index in range(len(vertices) - post_sides, len(vertices)):
+                    x, y, z = vertices[index]
+                    vertices[index] = (x + target.x - base.x, y + target.y - base.y, z)
     meshes = {}
     try:
         for name, part in parts.items():

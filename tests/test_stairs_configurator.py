@@ -93,7 +93,7 @@ class ConfiguratorTest(unittest.TestCase):
         post_faces = len(parts['posts'].data.polygons)
         root.modular_stairs.rail_lower_count = 2
         self.assertEqual(len(parts['lower_rails'].data.polygons) * 2, lower_faces)
-        root.modular_stairs.rail_post_spacing = .4
+        root.modular_stairs.rail_post_every_steps = 1
         self.assertGreater(len(parts['posts'].data.polygons), post_faces)
         root.modular_stairs.rail_lower_count = 0
         self.assertNotIn('lower_rails', {child['modular_stair_part'] for child in root.children})

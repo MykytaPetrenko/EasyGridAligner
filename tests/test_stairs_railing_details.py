@@ -75,10 +75,11 @@ class RailingDetailTest(unittest.TestCase):
         caps = [face for face in mesh.polygons if len(face.vertices) > 4]
         self.assertEqual(len(caps), len(groups) * 2)
         self.assertTrue(all(len(face.vertices) == sides for face in caps))
-        # All shoulders are flat annuli, including the integral stem transition.
-        # A cone/frustum would introduce faces with an intermediate Z normal.
+        # Shafts stay vertical and shoulders remain flat annuli. Only the narrow
+        # integral stem may lean toward a rounded elbow above its fixed foot.
+        stem_vertices = {index for group in groups for index in sorted(group)[-2 * sides:]} if integrated else set()
         self.assertTrue(all(abs(face.normal.z) < 1e-5 or abs(face.normal.z) > 1 - 1e-5
-                            for face in mesh.polygons))
+                            for face in mesh.polygons if not set(face.vertices).issubset(stem_vertices)))
         for group in groups:
             low = min(mesh.vertices[index].co.z for index in group)
             high = max(mesh.vertices[index].co.z for index in group)
@@ -164,7 +165,7 @@ class RailingDetailTest(unittest.TestCase):
                      'rail_connector_segments', 'rail_connector_match_post', 'rail_connector_mode', 'rail_outer_enabled'):
             settings.property_unset(name)
         rebuild_stairs(root)
-        self.assertEqual(settings.schema_version, 11)
+        self.assertEqual(settings.schema_version, 13)
         self.assertEqual(settings.rail_segments, 20)
         self.assertEqual(settings.rail_lower_segments, 8)
         self.assertFalse(settings.rail_connector_match_post)

@@ -190,7 +190,7 @@ class Type2Test(unittest.TestCase):
         bpy.ops.wm.open_mainfile(filepath=str(path))
         loaded = bpy.data.objects['Type 2 Saved Stairs']
         self.assertEqual(loaded.modular_stairs.rail_type, 'TYPE_2')
-        self.assertEqual(loaded.modular_stairs.schema_version, 11)
+        self.assertEqual(loaded.modular_stairs.schema_version, 13)
         self.assertTrue(all(loaded.modular_stairs.is_property_set(name) for name in INPUT_FIELDS))
         self.assertAlmostEqual(loaded.modular_stairs.rail_handrail_width, .054)
         self.assertAlmostEqual(loaded.modular_stairs.rail_handrail_thickness, .022)
@@ -213,7 +213,7 @@ class Type2Test(unittest.TestCase):
             settings.property_unset(name)
         settings.auto_update = True
         self.assertFalse(settings.last_error, settings.last_error)
-        self.assertEqual(settings.schema_version, 11)
+        self.assertEqual(settings.schema_version, 13)
         self.assertEqual(settings.rail_segments, 24)
         self.assertEqual(settings.rail_type, 'TYPE_1')
         self.assertTrue(all(settings.is_property_set(name) for name in fields))

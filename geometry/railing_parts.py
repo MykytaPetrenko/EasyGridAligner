@@ -156,6 +156,8 @@ def _railing_route(p, frames, landings, side, inset, radius, spacing):
     x = side * (p['width'] / 2 - inset)
     length, height = p['step_count'] * p['tread'], p['step_count'] * p['riser']
     controls = [frames[0] @ Vector((x, 0, 0))]
+    if p.get('railing_start_on_landing', False):
+        controls.insert(0, frames[0] @ Vector((x, p['tread'] / 2, 0)))
     posts = []
     stride = max(1, floor(spacing / Vector((p['tread'], p['riser'])).length))
     for index, frame in enumerate(frames):
@@ -170,7 +172,24 @@ def _railing_route(p, frames, landings, side, inset, radius, spacing):
     return _clean_path(controls), posts
 
 
-def _append_tube(part, points, radius, sides):
+def _cut_rail_caps(part, offset, points, sides, ends=(True, True)):
+    """Cut exposed ends on vertical post-center planes without altering joint rings."""
+    for enabled, ring, center, direction in (
+        (ends[0], offset, points[0], points[1] - points[0]),
+        (ends[1], offset + (len(points) - 1) * sides, points[-1], points[-2] - points[-1]),
+    ):
+        if not enabled:
+            continue
+        horizontal = direction.copy()
+        horizontal.z = 0
+        horizontal.normalize()
+        for index in range(ring, ring + sides):
+            vertex = Vector(part[0][index])
+            vertex -= direction * ((vertex - center).dot(horizontal) / direction.dot(horizontal))
+            part[0][index] = tuple(vertex)
+
+
+def _append_tube(part, points, radius, sides, vertical_caps=(False, False)):
     vertices, faces, smooth = part
     points = _clean_path(points)
     if len(points) < 2 or (points[-1] - points[0]).length < EPSILON:
@@ -196,6 +215,8 @@ def _append_tube(part, points, radius, sides):
         vertices.extend(tuple(center + radius * (u * cos(2 * pi * side / sides)
                                                 + v * sin(2 * pi * side / sides)))
                         for side in range(sides))
+    if any(vertical_caps):
+        _cut_rail_caps(part, offset, points, sides, vertical_caps)
     faces.append(tuple(offset + index for index in reversed(range(sides))))
     smooth.append(False)
     for ring in range(len(points) - 1):

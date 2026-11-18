@@ -214,7 +214,7 @@ class FinishShadingTest(unittest.TestCase):
         settings.property_unset('plate_bevel_corners')
         settings.auto_update = True
         self.assertFalse(settings.last_error)
-        self.assertEqual(settings.schema_version, 11)
+        self.assertEqual(settings.schema_version, 13)
         self.assertFalse(settings.plate_bevel_corners)
         self.assertTrue(all(settings.is_property_set(name) for name in INPUT_FIELDS))
 

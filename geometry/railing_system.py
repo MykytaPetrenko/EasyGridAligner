@@ -102,7 +102,8 @@ def build_railing_system_meshes(
                 parameters.update(handrail_only=True, rail_lower_count=0,
                                   rail_inset=half_width + rail_wall_clearance)
             sections = [(Matrix.Identity(4), stairs)] if include else [
-                (frame, dict(stairs, flight_count=1)) for frame in frames]
+                (frame, dict(stairs, flight_count=1, railing_start_on_landing=index > 0 and not wall))
+                for index, frame in enumerate(frames)]
             for frame, section in sections:
                 meshes = build_railing_meshes(section, **parameters)
                 if wall:

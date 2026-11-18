@@ -146,9 +146,9 @@ class Type4Test(unittest.TestCase):
 
     def test_lower_rail_and_infill_stop_at_terminal_posts(self):
         root = self.create()
-        for steps, spacing, riser in itertools.product((1, 2, 8), (.4, 1.5), (.12, .2)):
-            with self.subTest(steps=steps, spacing=spacing, riser=riser):
-                self.configure(root, step_count=steps, rail_post_spacing=spacing, riser=riser)
+        for steps, stride, riser in itertools.product((1, 2, 8), (2, 8), (.12, .2)):
+            with self.subTest(steps=steps, every_steps=stride, riser=riser):
+                self.configure(root, step_count=steps, rail_post_every_steps=stride, riser=riser)
                 mesh = self.parts(root)['balustrade'].data
                 posts = self.vertical_groups(mesh, 16)
                 balusters = self.vertical_groups(mesh, 8)
@@ -227,7 +227,7 @@ class Type4Test(unittest.TestCase):
         settings.property_unset('rail_type4_handrail_width')
         settings.auto_update = True
         self.assertFalse(settings.last_error)
-        self.assertEqual(settings.schema_version, 11)
+        self.assertEqual(settings.schema_version, 13)
         self.assertTrue(all(settings.is_property_set(name) for name in INPUT_FIELDS))
         name = root.name
         path = Path(os.environ['STAIRS_TEST_OUTPUT']) / 'stairs_type4_test.blend'

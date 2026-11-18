@@ -59,8 +59,8 @@ The smaller tubes are **infill rails**, the uprights are **posts**, their thin t
 - **Coupling Length / Thickness** control hollow sleeves at both ends of each main-tube elbow.
 - **Infill Rail Count** sets the number of thin continuous rails; default `4`, with `0` supported.
   Their radius and lower clearance are independent. They have rounded turns and no couplings.
-- **Post Spacing** sets the target frequency. Flight posts snap to tread centers, with posts at the
-  first and last steps; landing posts are distributed along the railing route.
+- **Steps per Post / Flight Distribution** control post frequency on treads, including mandatory
+  first/last tread supports. Landing spacing has its own manual or automatic target, shared by all types.
 - **Post Radius** controls the uprights. The base flange, shaft and upper collar are one closed,
   connected mesh per post, joined by annular shoulder faces; there are no overlapping cylinders or
   hidden shaft end caps in the flange/collar.
@@ -133,10 +133,36 @@ Both material choices are stored on the stair configuration. Set them in the con
 survive geometry updates, style/mount switches, copied stair configurations and save/reopen.
 Pending material edits also survive saving with Auto Update disabled.
 
-**Baluster Spacing** controls target spacing between vertical bar centers. **Baluster Width / Depth**
-set the rectangular section across/along the railing. Handrail width/thickness and bottom rail
-width/thickness/clearance are independent; **Post Spacing** and **Square Post Width** control the
-support posts. Bottom Clearance keeps the sloping rail above the step noses.
+**Baluster Spacing** is the fixed horizontal center-to-center distance between intermediate bars.
+Each bay between adjacent main posts receives a centered group of equally spaced bars; the two
+residual gaps at the posts may differ from that bar-to-bar distance. The default group has one fewer
+bar than the maximum fitted count. Enable **Dense Infill** to restore the extra bar and smaller
+residual gaps close to each post; bar-to-bar spacing remains fixed in either mode. **Baluster Width / Depth**
+set the rectangular section across/along the railing. Bottom Clearance keeps the bottom rail above
+the step noses. All four railing types share the following **Posts** controls:
+
+- **Steps per Post** sets the nominal interval in treads, independently from metric landing spacing.
+- **Flight Distribution: Balanced Treads** spreads that count over integer tread positions as evenly
+  as possible. **Every N Steps** keeps the exact interval and places any remainder in the final bay.
+  Both modes always include the first and last tread.
+- Each landing starts and ends with mandatory posts. The support before each upper flight is
+  set back onto the landing by half a tread along the route, keeping its foot clear of the first riser.
+  These posts remain when landing rails are disabled; an open upper-flight section includes the
+  corresponding short landing extension.
+- Landing corners normally receive supports too. Nearby landing-boundary/elbow points share a
+  tread or transition support when they fall within half a tread or the post-footprint clearance.
+  Tread supports and the anchor before an upper flight have priority, preventing doubled/tripled
+  posts around short returns. Tight inner gaps may omit additional corner supports.
+- **Calculate from Steps per Post** is enabled by default. Its landing target is Tread Depth times
+  Steps per Post, displayed as an absolute length. Disable it to enter **Landing Post Spacing**.
+  Each straight landing span is independently divided into equal intervals near that target.
+- **Square Post Width** controls rectangular shafts; **Post Radius** controls Type 1 shafts. First/last treads and landing transitions are never
+  removed by the corner-sharing rule. Nearby secondary landing points share those protected supports.
+
+Types 1/2 use the same mandatory landmarks, two tread distributions and landing spacing as Types 3/4.
+Post feet stay on their landmarks even when a Type 1 support stem meets a nearby rounded elbow.
+Existing configurations initialize Steps per Post from the previous metric spacing; layout and
+Dense Infill controls survive save/reopen and copy.
 
 **Handrail Boards & Bevels** provides three optional edge groups: **Top Edge Bevel**, **Bottom Edge
 Bevel** and **Start/End Cap Bevel**. Each has its own width; segment count and
@@ -169,8 +195,11 @@ Every open handrail end has a downward half-circle return. **Ends & Extensions >
 sets its centerline radius (default **40 mm**); **End Return Segments** controls arc resolution
 (default **12**). The radius must exceed half the handrail thickness. The complete return is fitted
 to the vertical boundary at the first/last stair tread, accounting for slope and arc thickness.
-Only the handrail extends past the first and last supporting posts. The bottom rail ends vertically
-inside those posts, and intermediate balusters are confined to the space between them. A section
+At an open upper-flight start, a small extension covers the mandatory landing post before the return.
+Only the handrail extends past the first and last supporting posts. In every railing type, lower
+members stop at the actual terminal posts; exposed ends are cut vertically through their centers,
+including on slopes. Additional infill setbacks may shorten them further inside that interval.
+Intermediate balusters are confined to the space between the posts. A section
 with a single post has no lower rail or intermediate infill. Type 4 fits its ends automatically;
 the shared Start/End Extension and Infill Setback values apply to Types 1–3 only.
 With **Include Landings** enabled, the rail continues through landing
@@ -347,6 +376,15 @@ failed-rebuild recovery, schema migration, saved settings and copied configurati
 sections and inclined end cuts, bar/post spacing, turn/gap/coverage combinations, mixed wall/flight
 mounting, Blender slot edits, material edits with Auto Update off, save/reopen/copy behavior,
 unchanged existing styles during schema migration, closed solids and failed-rebuild recovery.
+
+`tests/test_railing_regressions.py` reproduces the supplied two-flight/nine-step test case with a
+2.73 m landing and 1.29 m gap. It checks redundant-corner suppression and terminal lower-rail planes
+for all four styles, single-post sections, both directions and different elbow radii.
+
+`tests/test_railing_layout.py` verifies both integer-tread distributions, mandatory landing/flight
+transitions with or without landing rails, optional tight-gap corners, uniform landing intervals,
+fixed bar-to-bar pitch with centered end gaps, sparse/dense counts, landing-side tread clearance,
+shared support landmarks across all four types, post coverage and saved/copyable layout settings.
 
 `tests/test_stairs_type4.py` checks the all-metal section hierarchy, slope-matched vertical tops,
 analytic half-circle returns, smooth arcs, two returns on every disconnected flight section,

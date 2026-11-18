@@ -124,7 +124,6 @@ class MODULAR_ASSETS_PT_stairs(bpy.types.Panel):
                 common_names.append('rail_inset')
                 if not balusters:
                     common_names.append('rail_lower_count')
-                common_names.append('rail_post_spacing')
             for name in common_names:
                 controls.prop(settings, name)
             if has_wall:
@@ -156,7 +155,7 @@ class MODULAR_ASSETS_PT_stairs(bpy.types.Panel):
                     names = ('rail_radius', 'rail_bend_radius', 'rail_bend_segments', 'rail_segments',
                              'rail_coupling_length', 'rail_coupling_thickness')
                 if has_flight:
-                    names += (('rail_baluster_spacing', 'rail_baluster_width', 'rail_baluster_depth',
+                    names += (('rail_baluster_spacing', 'rail_baluster_dense', 'rail_baluster_width', 'rail_baluster_depth',
                                'rail_base_rail_width', 'rail_base_rail_height', 'rail_base_clearance') if balusters else
                               ('rail_lower_radius', 'rail_lower_segments', 'rail_lower_clearance'))
                 for name in names:
@@ -193,6 +192,13 @@ class MODULAR_ASSETS_PT_stairs(bpy.types.Panel):
                     bevel.prop(settings, 'rail_cap_bevel_profile')
             sub = controls.box() if has_flight else None
             if has_flight and dropdown(sub, settings, 'show_rail_posts', text='Posts' if balusters else 'Posts & Handrail Supports'):
+                sub.prop(settings, 'rail_post_every_steps')
+                sub.prop(settings, 'rail_post_step_mode')
+                sub.prop(settings, 'rail_landing_post_auto')
+                if settings.rail_landing_post_auto:
+                    sub.label(text=f'Landing target: {settings.tread * settings.rail_post_every_steps:.3f} m')
+                else:
+                    sub.prop(settings, 'rail_landing_post_spacing')
                 if balusters:
                     sub.prop(settings, 'rail_post_size')
                     sub.label(text='Square posts with integral base plates')

@@ -5,6 +5,7 @@ import bpy
 from mathutils import Vector
 
 from .stairs import _flight_layout
+from .railing_layout import plan_railing_posts, post_bounded_rail_path
 from .railing_parts import _append_tube, _clean_path, _closest_on_path, _extend_path, _make_mesh, _railing_route, _trim_path
 
 
@@ -75,7 +76,7 @@ def _corner_geometry(previous, point, following, width, thickness, radius, sides
 
 
 def _append_fixed_rail(straight_part, corner_part, points, width, thickness,
-                        radius, sides, corner_length, allowance):
+                        radius, sides, corner_length, allowance, vertical_caps=False):
     """Trim straight members at the fitting ends; make one solid per corner."""
     points = _clean_path(points)
     corners, sharp_rings = [], []
@@ -102,7 +103,7 @@ def _append_fixed_rail(straight_part, corner_part, points, width, thickness,
         segments.append((cursor, start))
         cursor = end
     segments.append((cursor, points[-1]))
-    for start, end in segments:
+    for index, (start, end) in enumerate(segments):
         if (end - start).length <= EPSILON:
             continue
         if radius is None:
@@ -110,7 +111,8 @@ def _append_fixed_rail(straight_part, corner_part, points, width, thickness,
             _append_loft(straight_part, ([start + offset for offset in offsets],
                                         [end + offset for offset in offsets]))
         else:
-            _append_tube(straight_part, (start, end), radius, sides)
+            _append_tube(straight_part, (start, end), radius, sides,
+                         vertical_caps=(vertical_caps and index == 0, vertical_caps and index == len(segments) - 1))
     return sharp_rings
 
 
@@ -138,6 +140,8 @@ def build_rectangular_railing_meshes(
     rail_post_size=.04, rail_corner_length=.06, rail_corner_allowance=.002,
     rail_lower_count=4, rail_lower_radius=.008, rail_lower_clearance=.12, rail_lower_segments=8,
     rail_post_spacing=.9, rail_connector_radius=.008, rail_connector_length=.07,
+    rail_post_every_steps=2, rail_post_step_mode='BALANCED',
+    rail_landing_post_auto=True, rail_landing_post_spacing=.6,
     rail_connector_mode='SEPARATE', rail_connector_segments=8, rail_connector_match_post=False,
     handrail_only=False,
     rail_start_extension=.05, rail_end_extension=.05,
@@ -173,8 +177,12 @@ def build_rectangular_railing_meshes(
     for side, enabled in ((-1, rail_left), (1, rail_right)):
         if not enabled or (stairs['flight_count'] > 1 and not rail_outer_enabled and side != inner_side):
             continue
-        controls, bases = _railing_route(stairs, frames, landings, side, rail_inset,
+        controls, _ = _railing_route(stairs, frames, landings, side, rail_inset,
                                          rail_corner_length, rail_post_spacing)
+        placements = [] if handrail_only else plan_railing_posts(
+            stairs, frames, landings, controls, side, rail_inset, rail_corner_length,
+            rail_post_every_steps, rail_post_step_mode, rail_landing_post_auto,
+            rail_landing_post_spacing, rail_post_size)
         original_path = [point + Vector((0, 0, rail_height)) for point in controls]
         path = _extend_path(original_path, rail_start_extension, rail_end_extension)
         _append_fixed_rail(parts['handrail'], parts['handrail_corners'], path,
@@ -182,19 +190,17 @@ def build_rectangular_railing_meshes(
                             rail_corner_length, rail_corner_allowance)
         if handrail_only:
             continue
-        infill_path = _trim_path(original_path, rail_infill_start_setback, rail_infill_end_setback) if rail_lower_count else []
-        for index in range(rail_lower_count):
+        infill_path = post_bounded_rail_path(controls, [placement.target for placement in placements],
+                                            rail_infill_start_setback, rail_infill_end_setback) if rail_lower_count else []
+        for index in range(rail_lower_count if infill_path else 0):
             height = rail_lower_clearance + (rail_height - .1 - rail_lower_clearance) * (index + 1) / (rail_lower_count + 1)
-            lower = [point + Vector((0, 0, height - rail_height)) for point in infill_path]
+            lower = [point + Vector((0, 0, height)) for point in infill_path]
             sharp_infill_rings.extend(_append_fixed_rail(
                 parts['lower_rails'], parts['infill_corners'], lower, 0, 0,
-                rail_lower_radius, rail_lower_segments, rail_corner_length, rail_corner_allowance))
-        placed = []
-        for base in bases:
-            if any((base - previous).length < .2 for previous in placed):
-                continue
-            placed.append(base)
-            target = _closest_on_path(base + Vector((0, 0, rail_height - stairs['riser'] / 2)), path)
+                rail_lower_radius, rail_lower_segments, rail_corner_length, rail_corner_allowance, vertical_caps=True))
+        for placement in placements:
+            base = placement.base
+            target = _closest_on_path(placement.target + Vector((0, 0, rail_height)), path)
             top_z = target.z - rail_handrail_thickness / 2 - rail_connector_length
             if top_z <= base.z + .025:
                 raise ValueError('Railing Height leaves no room for a post at this landing')
@@ -210,7 +216,7 @@ def build_rectangular_railing_meshes(
                 _append_tube(parts['connectors'], (Vector((target.x, target.y, top_z)),
                                                    Vector((target.x, target.y, stem_end))),
                              rail_connector_radius, support_sides)
-            _append_square_post(parts['posts'], target, profile)
+            _append_square_post(parts['posts'], base, profile)
     meshes = {}
     try:
         for name, part in parts.items():
