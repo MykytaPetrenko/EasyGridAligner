@@ -171,7 +171,7 @@ class TimberTest(unittest.TestCase):
                 settings['rail_cap_end_bevel_width'] = .007
                 settings.auto_update = True
                 self.assertFalse(settings.last_error, settings.last_error)
-                self.assertEqual(settings.schema_version, 10)
+                self.assertEqual(settings.schema_version, 11)
                 self.assertEqual(settings.rail_cap_bevel_ends, start or end)
                 self.assertAlmostEqual(settings.rail_cap_ends_bevel_width,
                                        .007 if end else .003 if start else .002)

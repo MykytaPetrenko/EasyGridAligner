@@ -90,7 +90,10 @@ def build_railing_system_meshes(
             wall = mode == 'WALL'
             if wall:
                 rectangular = parameters['rail_type'] != 'TYPE_1'
-                if parameters['rail_type'] == 'TYPE_3':
+                if parameters['rail_type'] == 'TYPE_4':
+                    half_width = parameters['rail_type4_handrail_width'] / 2
+                    half_height = parameters['rail_type4_handrail_thickness'] / 2
+                elif parameters['rail_type'] == 'TYPE_3':
                     half_width = parameters['rail_type3_handrail_width'] / 2
                     half_height = parameters['rail_type3_handrail_thickness'] / 2 + parameters['rail_top_rail_height']
                 else:
@@ -122,7 +125,7 @@ def build_railing_system_meshes(
                     append_wall_mounts(wall_parts, route, side, parameters['rail_height'], half_width,
                                        half_height, rail_wall_clearance, rail_wall_bracket_spacing,
                                        parameters['rail_connector_radius'], stem_sides, rail_wall_plate_radius,
-                                       radius, precise_underside=parameters['rail_type'] == 'TYPE_3')
+                                       radius, precise_underside=parameters['rail_type'] in ('TYPE_3', 'TYPE_4'))
                 if rail_preview_walls:
                     # Trace the actual stair boundary. Offsetting handrail control
                     # rings can collapse the short returns at landing apertures.

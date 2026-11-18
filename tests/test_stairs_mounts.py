@@ -163,7 +163,7 @@ class MountTest(unittest.TestCase):
             settings.property_unset(name)
         settings.auto_update = True
         self.assertFalse(settings.last_error)
-        self.assertEqual(settings.schema_version, 10)
+        self.assertEqual(settings.schema_version, 11)
         self.assertEqual(settings.rail_outer_mount, 'NONE')
         self.assertEqual(settings.rail_inner_mount, 'FLIGHT')
         self.assertTrue(all(settings.is_property_set(name) for name in SYSTEM_FIELDS))

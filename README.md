@@ -118,8 +118,8 @@ are cut to match the sloping underside/top of the adjoining rails.
 
 A continuous metal **top rail** sits flush beneath the handrail cap, including slopes and landing
 turns. It shares **Bottom Rail Width** and has its own **Top Rail Thickness** (default 15 mm,
-less than the 35 mm default bottom rail thickness). Balusters and support posts terminate at the
-underside of this metal top rail. The cap height stays unchanged and the top rail uses the Metal
+less than the 35 mm default bottom rail thickness). Balusters terminate at its underside; wider
+support posts reach its upper plane, directly beneath the cap. The cap height stays unchanged and the top rail uses the Metal
 material slot. Wall-mounted Type 3 handrails include this support rail too, with brackets meeting
 its underside. Existing stairs initialize the thickness below their saved bottom rail thickness.
 
@@ -154,7 +154,31 @@ clear distance perpendicular to the joint plane, including angled miter joints; 
 Each board receives the selected start/end bevels. Metal top/bottom rails remain continuous and
 the assembly retains exactly two material slots.
 
-**Ends & Extensions** applies to all three styles. **Handrail Start Extension / Handrail End
+## Type 4: all-metal balusters with returned ends
+
+Select **Railing System > Type > Type 4 · Metal Balusters** for a flat metal handrail over the same
+vertical infill and square support posts as Type 3. There is no timber cap or separate backing rail.
+The assembly has one **Metal** material slot, shared with its posts, bottom rail and wall brackets.
+
+Defaults are a **50 × 12 mm** handrail, **40 mm** square posts, **30 mm** bottom rail width and
+**16 mm** baluster width. Widths must increase in that order from baluster to bottom rail to post
+to handrail. Posts and balusters meet the handrail underside with cuts matching the run slope.
+The handrail section and end-return settings are stored separately from the other railing types.
+
+Every open handrail end has a downward half-circle return. **Ends & Extensions > End Return Radius**
+sets its centerline radius (default **40 mm**); **End Return Segments** controls arc resolution
+(default **12**). The radius must exceed half the handrail thickness. The complete return is fitted
+to the vertical boundary at the first/last stair tread, accounting for slope and arc thickness.
+Only the handrail extends past the first and last supporting posts. The bottom rail ends vertically
+inside those posts, and intermediate balusters are confined to the space between them. A section
+with a single post has no lower rail or intermediate infill. Type 4 fits its ends automatically;
+the shared Start/End Extension and Infill Setback values apply to Types 1–3 only.
+With **Include Landings** enabled, the rail continues through landing
+miters and has returns only at its two open ends. With it disabled, every flight becomes a separate
+section with returns at both ends. Inner and outer sides keep independent mounting and coverage.
+Wall-mounted sections use the same returned handrail and one metal material.
+
+**Ends & Extensions** contains the arc controls for Type 4. For Types 1–3, **Handrail Start Extension / Handrail End
 Extension** move the open handrail ends beyond the original route, independently. **Infill Start
 Setback / Infill End Setback** shorten the intermediate rails of Types 1/2, and the metal frame of
 Type 3. Each value defaults to 50 mm. In Type 3 these fields are labeled **Metal Start / End Setback**.
@@ -323,6 +347,11 @@ failed-rebuild recovery, schema migration, saved settings and copied configurati
 sections and inclined end cuts, bar/post spacing, turn/gap/coverage combinations, mixed wall/flight
 mounting, Blender slot edits, material edits with Auto Update off, save/reopen/copy behavior,
 unchanged existing styles during schema migration, closed solids and failed-rebuild recovery.
+
+`tests/test_stairs_type4.py` checks the all-metal section hierarchy, slope-matched vertical tops,
+analytic half-circle returns, smooth arcs, two returns on every disconnected flight section,
+continuous landing routes in both turn directions, wall mounts, one material slot, style switches,
+invalid-input recovery, schema migration and save/reopen/copy persistence.
 
 `tests/test_stairs_timber.py` checks all three cap bevel groups separately and together, split/continuous
 caps, closed solids under bevel clamping, board lengths and perpendicular joint gaps, asymmetric

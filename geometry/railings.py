@@ -39,6 +39,8 @@ def build_railing_meshes(
     rail_baluster_spacing=.12, rail_baluster_width=.016, rail_baluster_depth=.025,
     rail_base_rail_width=.03, rail_base_rail_height=.035, rail_base_clearance=.05,
     rail_top_rail_height=.015,
+    rail_type4_handrail_width=.05, rail_type4_handrail_thickness=.012,
+    rail_type4_return_radius=.04, rail_type4_return_segments=12,
     rail_start_extension=.05, rail_end_extension=.05,
     rail_infill_start_setback=.05, rail_infill_end_setback=.05,
     rail_cap_split=False, rail_cap_max_length=2.0, rail_cap_joint_gap=.003,
@@ -49,12 +51,16 @@ def build_railing_meshes(
     rail_cap_bevel_segments=3, rail_cap_bevel_profile=.5,
     handrail_only=False,
 ):
-    if rail_type == 'TYPE_3':
+    if rail_type in ('TYPE_3', 'TYPE_4'):
+        metal_handrail = rail_type == 'TYPE_4'
         return build_baluster_railing_meshes(
             stairs, rail_left=rail_left, rail_right=rail_right, rail_outer_enabled=rail_outer_enabled,
             rail_height=rail_height, rail_inset=rail_inset, rail_post_spacing=rail_post_spacing,
-            rail_post_size=rail_post_size, rail_type3_handrail_width=rail_type3_handrail_width,
-            rail_type3_handrail_thickness=rail_type3_handrail_thickness,
+            rail_post_size=rail_post_size,
+            rail_type3_handrail_width=rail_type4_handrail_width if metal_handrail else rail_type3_handrail_width,
+            rail_type3_handrail_thickness=rail_type4_handrail_thickness if metal_handrail else rail_type3_handrail_thickness,
+            metal_handrail=metal_handrail, return_radius=rail_type4_return_radius,
+            return_segments=rail_type4_return_segments,
             rail_baluster_spacing=rail_baluster_spacing, rail_baluster_width=rail_baluster_width,
             rail_baluster_depth=rail_baluster_depth, rail_base_rail_width=rail_base_rail_width,
             rail_base_rail_height=rail_base_rail_height, rail_base_clearance=rail_base_clearance,
@@ -83,7 +89,7 @@ def build_railing_meshes(
             rail_end_extension=rail_end_extension, rail_infill_start_setback=rail_infill_start_setback,
             rail_infill_end_setback=rail_infill_end_setback)
     if rail_type != 'TYPE_1':
-        raise ValueError('Choose railing Type 1, Type 2 or Type 3')
+        raise ValueError('Choose railing Type 1, Type 2, Type 3 or Type 4')
     if not handrail_only and rail_height <= stairs['riser'] / 2 + rail_radius + rail_connector_length + .03:
         raise ValueError('Railing Height is too low for the posts and connectors')
     if rail_inset < max(rail_radius + rail_coupling_thickness, 0 if handrail_only else rail_post_radius * 1.8):

@@ -98,11 +98,14 @@ class MODULAR_ASSETS_PT_stairs(bpy.types.Panel):
             controls.enabled = settings.rail_enabled
             controls.prop(settings, 'rail_type')
             rectangular = settings.rail_type == 'TYPE_2'
-            balusters = settings.rail_type == 'TYPE_3'
+            timber = settings.rail_type == 'TYPE_3'
+            metal = settings.rail_type == 'TYPE_4'
+            balusters = timber or metal
             if balusters:
                 materials = controls.box()
-                materials.label(text='Materials · 2 Slots')
-                for field, label in (('rail_metal_material', 'Metal'), ('rail_handrail_material', 'Handrail')):
+                materials.label(text='Materials · 2 Slots' if timber else 'Metal Material')
+                fields = (('rail_metal_material', 'Metal'), ('rail_handrail_material', 'Handrail')) if timber else (('rail_metal_material', 'Metal'),)
+                for field, label in fields:
                     row = materials.row()
                     row.label(text=label)
                     row.template_ID(settings, field, new='material.new')
@@ -141,7 +144,9 @@ class MODULAR_ASSETS_PT_stairs(bpy.types.Panel):
             sub = controls.box()
             title = 'Handrail & Vertical Balusters' if balusters else ('Handrail, Infill & Corner Fittings' if rectangular else 'Handrail, Infill & Sleeves')
             if dropdown(sub, settings, 'show_rail_tubes', text=title):
-                if balusters:
+                if metal:
+                    names = ('rail_type4_handrail_width', 'rail_type4_handrail_thickness')
+                elif timber:
                     names = ('rail_type3_handrail_width', 'rail_type3_handrail_thickness', 'rail_top_rail_height')
                     if not has_flight:
                         names += ('rail_base_rail_width', 'rail_base_rail_height')
@@ -158,12 +163,16 @@ class MODULAR_ASSETS_PT_stairs(bpy.types.Panel):
                     sub.prop(settings, name)
             sub = controls.box()
             if dropdown(sub, settings, 'show_rail_ends', text='Ends & Extensions'):
-                sub.prop(settings, 'rail_start_extension')
-                sub.prop(settings, 'rail_end_extension')
-                if has_flight or balusters:
+                if not metal:
+                    sub.prop(settings, 'rail_start_extension')
+                    sub.prop(settings, 'rail_end_extension')
+                if metal:
+                    sub.prop(settings, 'rail_type4_return_radius')
+                    sub.prop(settings, 'rail_type4_return_segments')
+                if (has_flight and not metal) or timber:
                     sub.prop(settings, 'rail_infill_start_setback', text='Metal Start Setback' if balusters else 'Infill Start Setback')
                     sub.prop(settings, 'rail_infill_end_setback', text='Metal End Setback' if balusters else 'Infill End Setback')
-            if balusters:
+            if timber:
                 sub = controls.box()
                 if dropdown(sub, settings, 'show_timber_details', text='Handrail Boards & Bevels'):
                     sub.prop(settings, 'rail_cap_split')

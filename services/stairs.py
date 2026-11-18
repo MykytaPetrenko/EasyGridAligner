@@ -16,7 +16,7 @@ SYSTEM_FIELDS = tuple(name for name in signature(build_railing_system_meshes).pa
 PLATE_FIELDS = tuple(name for name in signature(build_tread_plate_mesh).parameters if name not in ('name', 'stairs'))
 INPUT_FIELDS = STAIR_FIELDS + RAIL_FIELDS + SYSTEM_FIELDS + PLATE_FIELDS + ('rail_enabled',)
 _REBUILDING = set()
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 PART_NAMES = {'handrail': 'Handrail', 'lower_rails': 'Infill Rails', 'posts': 'Posts',
               'connectors': 'Handrail Supports', 'couplings': 'Coupling Sleeves',
               'handrail_corners': 'Handrail Corner Connectors', 'infill_corners': 'Infill Corner Connectors',
@@ -100,11 +100,12 @@ def _preview_material():
     return material
 
 
-def _type3_materials(settings):
-    for field, name, color, metallic, roughness in (
+def _baluster_materials(settings, metal_only=False):
+    materials = (
         ('rail_metal_material', 'Stairs Powder Coated Metal', (.025, .03, .035, 1), .65, .32),
         ('rail_handrail_material', 'Stairs Timber Handrail', (.4, .19, .055, 1), 0.0, .35),
-    ):
+    )
+    for field, name, color, metallic, roughness in (materials[:1] if metal_only else materials):
         if getattr(settings, field) is None:
             material = bpy.data.materials.get(name)
             if material is None:
@@ -116,21 +117,23 @@ def _type3_materials(settings):
                 shader.inputs['Metallic'].default_value = metallic
                 shader.inputs['Roughness'].default_value = roughness
             setattr(settings, field, material)
-    return settings.rail_metal_material, settings.rail_handrail_material
+    return (settings.rail_metal_material,) if metal_only else (settings.rail_metal_material, settings.rail_handrail_material)
 
 
-def _sync_type3_materials(settings, children):
+def _sync_baluster_materials(settings, children):
     """Retain edits made in Blender's material slots as well as the configurator."""
     if settings.rail_materials_dirty:
         return
     previous = next((child for role, child in children.items()
-                     if role in ('balustrade', 'wall_balustrade') and len(child.data.materials) == 2), None)
+                     if role in ('balustrade', 'wall_balustrade') and len(child.data.materials) in (1, 2)), None)
     if previous is None:
         return
     active = bpy.context.object
-    if active in children.values() and len(active.data.materials) == 2:
+    if (active in children.values() and active is not None and active.data.materials
+            and active.get('modular_stair_part') in ('balustrade', 'wall_balustrade')):
         previous = active
-    for field, material in zip(('rail_metal_material', 'rail_handrail_material'), previous.data.materials):
+    fields = ('rail_metal_material',) if settings.rail_type == 'TYPE_4' else ('rail_metal_material', 'rail_handrail_material')
+    for field, material in zip(fields, previous.data.materials):
         if material is not None:
             setattr(settings, field, material)
 
@@ -189,7 +192,7 @@ def rebuild_stairs(root):
                 parameters, **{name: getattr(settings, name) for name in RAIL_FIELDS + SYSTEM_FIELDS}))
         children = {child.get('modular_stair_part'): child for child in root.children
                     if child.get('modular_stair_part') in PART_NAMES}
-        _sync_type3_materials(settings, children)
+        _sync_baluster_materials(settings, children)
         concrete = bpy.data.materials.get('Stair Concrete')
         if concrete is None:
             concrete = bpy.data.materials.new('Stair Concrete')
@@ -205,8 +208,12 @@ def rebuild_stairs(root):
                     mesh.materials.append(settings.plate_material)
                 elif name == 'preview_walls':
                     _copy_materials(mesh, previous.data if previous is not None else None, _preview_material())
+                elif settings.rail_type == 'TYPE_4':
+                    if settings.rail_metal_material is None:
+                        settings.rail_metal_material = _baluster_materials(settings, metal_only=True)[0]
+                    mesh.materials.append(settings.rail_metal_material)
                 elif settings.rail_type == 'TYPE_3':
-                    for material in _type3_materials(settings):
+                    for material in _baluster_materials(settings):
                         mesh.materials.append(material)
                 else:
                     _copy_materials(mesh, previous.data if previous is not None else None, _steel_material())

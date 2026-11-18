@@ -150,7 +150,7 @@ class Type3Test(unittest.TestCase):
         bpy.context.view_layer.objects.active = root
         bpy.ops.modular_assets.update_stairs()
         self.assertFalse(settings.last_error)
-        self.assertEqual(settings.schema_version, 10)
+        self.assertEqual(settings.schema_version, 11)
         self.assertAlmostEqual(settings.rail_top_rail_height, .005)
 
     def test_turns_gaps_and_flight_coverage(self):
@@ -265,7 +265,7 @@ class Type3Test(unittest.TestCase):
             settings.property_unset(name)
         settings.auto_update = True
         self.assertFalse(settings.last_error)
-        self.assertEqual(settings.schema_version, 10)
+        self.assertEqual(settings.schema_version, 11)
         self.assertEqual(settings.rail_type, 'TYPE_2')
         self.assertAlmostEqual(settings.rail_handrail_width, .054)
         self.assertTrue(all(settings.is_property_set(name) for name in fields))
