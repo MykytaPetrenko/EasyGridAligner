@@ -83,7 +83,16 @@ def _landing_route(p, landing, side, inset, radius):
         next_x = sign * (width / 2 + gap)
         next_y = y - width / 2 - gap + sign * side * (width / 2 - inset)
         if inner:
-            points.append((x, next_y))
+            if gap > 2 * inset + EPSILON:
+                # The gap exposes a rectangular landing projection. Follow
+                # its near and outgoing edges instead of cutting across it.
+                edge_x = next_x - sign * inset
+                edge_y = landing['bounds'][3] - inset
+                points.extend(((x, edge_y), (edge_x, edge_y), (edge_x, next_y)))
+            else:
+                # A projection narrower than the two inset margins collapses
+                # to the compact corner route.
+                points.append((x, next_y))
         else:
             outer_x = low_x + inset if sign > 0 else high_x - inset
             bridge_y = far_y + inset

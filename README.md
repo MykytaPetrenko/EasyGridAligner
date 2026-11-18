@@ -42,6 +42,8 @@ updating the addon to load the new modules.
 
 In **Railing System**, enable **Enable Railing** and choose the left/right sides. The railing follows
 flights and the inner/outer landing routes, including 90° and 180° turns in either direction.
+On 90° turns with an enlarged Flight Gap, the inner route follows the exposed edges of the
+landing projection at Edge Inset. The handrail, infill rails and landing posts share that route.
 **Outer Railing** can disable the outer route on multi-flight stairs while keeping the inner route.
 Its interpretation follows Turn Direction. On a straight single flight, use Left Side / Right Side.
 

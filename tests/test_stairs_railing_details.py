@@ -12,6 +12,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
 import EasyGridAligner
 from EasyGridAligner.services.stairs import INPUT_FIELDS, rebuild_stairs
+from EasyGridAligner.geometry.railings import _landing_route, _railing_route
+from EasyGridAligner.geometry.stairs import _flight_layout
 
 
 def components(mesh):
@@ -168,6 +170,48 @@ class RailingDetailTest(unittest.TestCase):
         self.assertFalse(settings.rail_connector_match_post)
         self.assertTrue(all(settings.is_property_set(name) for name in INPUT_FIELDS))
         self.assert_post_topology(self.parts(root)['posts'].data, 20, False)
+
+    def test_large_gap_inner_route_follows_landing_projection(self):
+        for direction, gap in itertools.product(('LEFT', 'RIGHT'), (.2, 1.0, 3.0)):
+            with self.subTest(direction=direction, gap=gap):
+                p = dict(flight_count=3, step_count=6, width=2.0, riser=.2, tread=.3,
+                         turn_angle='90', turn_direction=direction, landing_depth=1.2,
+                         flight_gap=gap, landing_side_overhang=.2, landing_end_overhang=.3)
+                frames, landings = _flight_layout(3, 6, 2, .2, .3, '90', direction, 1.2, gap, .2, .3)
+                side = 1 if direction == 'RIGHT' else -1
+                for landing in landings:
+                    inverse = landing['frame'].inverted()
+                    route = [inverse @ point for point in _landing_route(p, landing, side, .08, .09)]
+                    expected = ((side * .92, -1.8), (side * .92, -1.88),
+                                (side * (1 + gap - .08), -1.88),
+                                (side * (1 + gap - .08), -1.8 - gap - .08),
+                                (side * (1 + gap), -1.8 - gap - .08))
+                    self.assertEqual(len(route), len(expected))
+                    for point, (x, y) in zip(route, expected):
+                        self.assertAlmostEqual(point.x, x, places=5)
+                        self.assertAlmostEqual(point.y, y, places=5)
+                    # The two long runs must parallel the exposed near and
+                    # outgoing landing edges, with a constant 8 cm inset.
+                    self.assertAlmostEqual(route[1].y, route[2].y, places=5)
+                    self.assertAlmostEqual(route[2].x, route[3].x, places=5)
+                _, post_bases = _railing_route(p, frames, landings, side, .08, .09, .9)
+                for landing in landings:
+                    inverse = landing['frame'].inverted()
+                    platform_posts = [inverse @ point for point in post_bases
+                                      if abs((inverse @ point).z - landing['height']) < 1e-5]
+                    if gap >= 1:
+                        self.assertTrue(any(abs(point.y + 1.88) < 1e-5 and side * point.x > 1
+                                            for point in platform_posts), 'No posts along the projection near edge')
+
+    def test_large_gap_projected_rails_remain_closed(self):
+        for direction, gap in itertools.product(('LEFT', 'RIGHT'), (.001, .2, 1.0, 3.0)):
+            with self.subTest(direction=direction, gap=gap):
+                root = self.create(flight_count=3, turn_angle='90', turn_direction=direction,
+                                   flight_gap=gap, rail_outer_enabled=False,
+                                   landing_side_overhang=.2, landing_end_overhang=.3,
+                                   rail_connector_mode='INTEGRATED')
+                for obj in [root, *self.parts(root).values()]:
+                    self.assert_closed(obj.data)
 
 
 if __name__ == '__main__':
