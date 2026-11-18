@@ -4,6 +4,7 @@ from mathutils import Vector
 
 from .stairs import _flight_layout
 from .railings_rectangular import build_rectangular_railing_meshes
+from .railings_balusters import build_baluster_railing_meshes
 from .railing_parts import (
     _clean_path,
     _rounded_path,
@@ -31,8 +32,24 @@ def build_railing_meshes(
     rail_connector_segments=8, rail_connector_match_post=False,
     rail_connector_mode='SEPARATE', rail_outer_enabled=True,
     rail_handrail_width=.05, rail_handrail_thickness=.025, rail_post_size=.04,
-    rail_corner_length=.06, rail_corner_allowance=.002, handrail_only=False,
+    rail_corner_length=.06, rail_corner_allowance=.002,
+    rail_type3_handrail_width=.065, rail_type3_handrail_thickness=.04,
+    rail_baluster_spacing=.12, rail_baluster_width=.016, rail_baluster_depth=.025,
+    rail_base_rail_width=.03, rail_base_rail_height=.035, rail_base_clearance=.05,
+    rail_top_rail_height=.015,
+    handrail_only=False,
 ):
+    if rail_type == 'TYPE_3':
+        return build_baluster_railing_meshes(
+            stairs, rail_left=rail_left, rail_right=rail_right, rail_outer_enabled=rail_outer_enabled,
+            rail_height=rail_height, rail_inset=rail_inset, rail_post_spacing=rail_post_spacing,
+            rail_post_size=rail_post_size, rail_type3_handrail_width=rail_type3_handrail_width,
+            rail_type3_handrail_thickness=rail_type3_handrail_thickness,
+            rail_baluster_spacing=rail_baluster_spacing, rail_baluster_width=rail_baluster_width,
+            rail_baluster_depth=rail_baluster_depth, rail_base_rail_width=rail_base_rail_width,
+            rail_base_rail_height=rail_base_rail_height, rail_base_clearance=rail_base_clearance,
+            rail_top_rail_height=rail_top_rail_height,
+            rail_corner_length=rail_corner_length, handrail_only=handrail_only)
     if rail_type == 'TYPE_2':
         return build_rectangular_railing_meshes(
             stairs, rail_left=rail_left, rail_right=rail_right, rail_outer_enabled=rail_outer_enabled,
@@ -46,7 +63,7 @@ def build_railing_meshes(
             rail_connector_segments=rail_connector_segments, rail_connector_match_post=rail_connector_match_post,
             handrail_only=handrail_only)
     if rail_type != 'TYPE_1':
-        raise ValueError('Choose railing Type 1 or Type 2')
+        raise ValueError('Choose railing Type 1, Type 2 or Type 3')
     if not handrail_only and rail_height <= stairs['riser'] / 2 + rail_radius + rail_connector_length + .03:
         raise ValueError('Railing Height is too low for the posts and connectors')
     if rail_inset < max(rail_radius + rail_coupling_thickness, 0 if handrail_only else rail_post_radius * 1.8):

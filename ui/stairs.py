@@ -98,6 +98,14 @@ class MODULAR_ASSETS_PT_stairs(bpy.types.Panel):
             controls.enabled = settings.rail_enabled
             controls.prop(settings, 'rail_type')
             rectangular = settings.rail_type == 'TYPE_2'
+            balusters = settings.rail_type == 'TYPE_3'
+            if balusters:
+                materials = controls.box()
+                materials.label(text='Materials · 2 Slots')
+                for field, label in (('rail_metal_material', 'Metal'), ('rail_handrail_material', 'Handrail')):
+                    row = materials.row()
+                    row.label(text=label)
+                    row.template_ID(settings, field, new='material.new')
             has_flight = 'FLIGHT' in (settings.rail_inner_mount, settings.rail_outer_mount)
             has_wall = 'WALL' in (settings.rail_inner_mount, settings.rail_outer_mount)
             inner_side = 'Right' if settings.turn_direction == 'RIGHT' else 'Left'
@@ -108,8 +116,13 @@ class MODULAR_ASSETS_PT_stairs(bpy.types.Panel):
                 extent = section.row()
                 extent.enabled = settings.flight_count > 1 and getattr(settings, f'rail_{prefix}_mount') != 'NONE'
                 extent.prop(settings, f'rail_{prefix}_include_landings')
-            for name in (('rail_height', 'rail_inset', 'rail_lower_count', 'rail_post_spacing')
-                         if has_flight else ('rail_height',)):
+            common_names = ['rail_height']
+            if has_flight:
+                common_names.append('rail_inset')
+                if not balusters:
+                    common_names.append('rail_lower_count')
+                common_names.append('rail_post_spacing')
+            for name in common_names:
                 controls.prop(settings, name)
             if has_wall:
                 sub = controls.box()
@@ -126,16 +139,29 @@ class MODULAR_ASSETS_PT_stairs(bpy.types.Panel):
                         sub.prop(settings, 'rail_preview_wall_extra_height')
                         sub.label(text='Wireframe preview · viewport only')
             sub = controls.box()
-            if dropdown(sub, settings, 'show_rail_tubes', text='Handrail, Infill & Corner Fittings' if rectangular else 'Handrail, Infill & Sleeves'):
-                names = (('rail_handrail_width', 'rail_handrail_thickness', 'rail_corner_length', 'rail_corner_allowance') if rectangular else
-                         ('rail_radius', 'rail_bend_radius', 'rail_bend_segments', 'rail_segments',
-                          'rail_coupling_length', 'rail_coupling_thickness'))
+            title = 'Handrail & Vertical Balusters' if balusters else ('Handrail, Infill & Corner Fittings' if rectangular else 'Handrail, Infill & Sleeves')
+            if dropdown(sub, settings, 'show_rail_tubes', text=title):
+                if balusters:
+                    names = ('rail_type3_handrail_width', 'rail_type3_handrail_thickness', 'rail_top_rail_height')
+                    if not has_flight:
+                        names += ('rail_base_rail_width', 'rail_base_rail_height')
+                elif rectangular:
+                    names = ('rail_handrail_width', 'rail_handrail_thickness', 'rail_corner_length', 'rail_corner_allowance')
+                else:
+                    names = ('rail_radius', 'rail_bend_radius', 'rail_bend_segments', 'rail_segments',
+                             'rail_coupling_length', 'rail_coupling_thickness')
                 if has_flight:
-                    names += ('rail_lower_radius', 'rail_lower_segments', 'rail_lower_clearance')
+                    names += (('rail_baluster_spacing', 'rail_baluster_width', 'rail_baluster_depth',
+                               'rail_base_rail_width', 'rail_base_rail_height', 'rail_base_clearance') if balusters else
+                              ('rail_lower_radius', 'rail_lower_segments', 'rail_lower_clearance'))
                 for name in names:
                     sub.prop(settings, name)
             sub = controls.box() if has_flight else None
-            if has_flight and dropdown(sub, settings, 'show_rail_posts', text='Posts & Handrail Supports'):
+            if has_flight and dropdown(sub, settings, 'show_rail_posts', text='Posts' if balusters else 'Posts & Handrail Supports'):
+                if balusters:
+                    sub.prop(settings, 'rail_post_size')
+                    sub.label(text='Square posts with integral base plates')
+                    return
                 if rectangular:
                     sub.prop(settings, 'rail_post_size')
                     sub.label(text='Square post section: 4 sides')

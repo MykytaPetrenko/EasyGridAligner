@@ -16,7 +16,7 @@ SYSTEM_FIELDS = tuple(name for name in signature(build_railing_system_meshes).pa
 PLATE_FIELDS = tuple(name for name in signature(build_tread_plate_mesh).parameters if name not in ('name', 'stairs'))
 INPUT_FIELDS = STAIR_FIELDS + RAIL_FIELDS + SYSTEM_FIELDS + PLATE_FIELDS + ('rail_enabled',)
 _REBUILDING = set()
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 7
 PART_NAMES = {'handrail': 'Handrail', 'lower_rails': 'Infill Rails', 'posts': 'Posts',
               'connectors': 'Handrail Supports', 'couplings': 'Coupling Sleeves',
               'handrail_corners': 'Handrail Corner Connectors', 'infill_corners': 'Infill Corner Connectors',
@@ -24,7 +24,8 @@ PART_NAMES = {'handrail': 'Handrail', 'lower_rails': 'Infill Rails', 'posts': 'P
               'wall_couplings': 'Wall Handrail Coupling Sleeves',
               'wall_handrail_corners': 'Wall Handrail Corner Connectors',
               'wall_brackets': 'Wall Brackets', 'wall_mount_plates': 'Wall Mounting Plates',
-              'preview_walls': 'Preview Walls'}
+              'preview_walls': 'Preview Walls', 'balustrade': 'Vertical Baluster Railing',
+              'wall_balustrade': 'Wall Handrail'}
 LEGACY_PART_NAMES = {'lower_rails': 'Lower Rails', 'connectors': 'Connectors', 'couplings': 'Couplings'}
 
 
@@ -99,6 +100,48 @@ def _preview_material():
     return material
 
 
+def _type3_materials(settings):
+    for field, name, color, metallic, roughness in (
+        ('rail_metal_material', 'Stairs Powder Coated Metal', (.025, .03, .035, 1), .65, .32),
+        ('rail_handrail_material', 'Stairs Timber Handrail', (.4, .19, .055, 1), 0.0, .35),
+    ):
+        if getattr(settings, field) is None:
+            material = bpy.data.materials.get(name)
+            if material is None:
+                material = bpy.data.materials.new(name)
+                material.diffuse_color = color
+                material.use_nodes = True
+                shader = material.node_tree.nodes.get('Principled BSDF')
+                shader.inputs['Base Color'].default_value = color
+                shader.inputs['Metallic'].default_value = metallic
+                shader.inputs['Roughness'].default_value = roughness
+            setattr(settings, field, material)
+    return settings.rail_metal_material, settings.rail_handrail_material
+
+
+def _sync_type3_materials(settings, children):
+    """Retain edits made in Blender's material slots as well as the configurator."""
+    if settings.rail_materials_dirty:
+        return
+    previous = next((child for role, child in children.items()
+                     if role in ('balustrade', 'wall_balustrade') and len(child.data.materials) == 2), None)
+    if previous is None:
+        return
+    active = bpy.context.object
+    if active in children.values() and len(active.data.materials) == 2:
+        previous = active
+    for field, material in zip(('rail_metal_material', 'rail_handrail_material'), previous.data.materials):
+        if material is not None:
+            setattr(settings, field, material)
+
+
+def request_railing_material_rebuild(settings, context):
+    if not settings.is_stairs or settings.id_data.as_pointer() in _REBUILDING:
+        return
+    settings.rail_materials_dirty = True
+    request_rebuild(settings, context)
+
+
 def rebuild_stairs(root):
     if root.type != 'MESH' or not root.modular_stairs.is_stairs:
         raise ValueError('Select a configured stairs object')
@@ -115,6 +158,8 @@ def rebuild_stairs(root):
     prepared = {}
     try:
         if settings.schema_version < SCHEMA_VERSION:
+            if not settings.is_property_set('rail_top_rail_height'):
+                settings.rail_top_rail_height = min(.015, settings.rail_base_rail_height * .5)
             inner_enabled = settings.rail_right if settings.turn_direction == 'RIGHT' else settings.rail_left
             outer_enabled = settings.rail_left if settings.turn_direction == 'RIGHT' else settings.rail_right
             if not settings.is_property_set('rail_inner_mount'):
@@ -137,6 +182,7 @@ def rebuild_stairs(root):
                 parameters, **{name: getattr(settings, name) for name in RAIL_FIELDS + SYSTEM_FIELDS}))
         children = {child.get('modular_stair_part'): child for child in root.children
                     if child.get('modular_stair_part') in PART_NAMES}
+        _sync_type3_materials(settings, children)
         concrete = bpy.data.materials.get('Stair Concrete')
         if concrete is None:
             concrete = bpy.data.materials.new('Stair Concrete')
@@ -152,6 +198,9 @@ def rebuild_stairs(root):
                     mesh.materials.append(settings.plate_material)
                 elif name == 'preview_walls':
                     _copy_materials(mesh, previous.data if previous is not None else None, _preview_material())
+                elif settings.rail_type == 'TYPE_3':
+                    for material in _type3_materials(settings):
+                        mesh.materials.append(material)
                 else:
                     _copy_materials(mesh, previous.data if previous is not None else None, _steel_material())
         previous = root.data
@@ -189,6 +238,7 @@ def rebuild_stairs(root):
             bpy.data.objects.remove(child, do_unlink=True)
             _discard_mesh(previous)
         settings.last_error = ''
+        settings.rail_materials_dirty = False
     except Exception as error:
         settings.last_error = str(error)
         for mesh in prepared.values():
@@ -237,10 +287,14 @@ def create_stairs(context, source=None):
     settings.auto_update = False
     source_settings = source.modular_stairs if source is not None else settings
     values = {name: getattr(source_settings, name) for name in INPUT_FIELDS}
+    if not source_settings.is_property_set('rail_top_rail_height'):
+        values['rail_top_rail_height'] = min(.015, source_settings.rail_base_rail_height * .5)
     # Write defaults as well: future addon defaults must not change a saved asset.
     for name, value in values.items():
         setattr(settings, name, value)
     settings.plate_material = source_settings.plate_material
+    settings.rail_metal_material = source_settings.rail_metal_material
+    settings.rail_handrail_material = source_settings.rail_handrail_material
     settings.schema_version = SCHEMA_VERSION
     settings.is_stairs = True
     try:

@@ -18,7 +18,8 @@ def _outward(start, end, side):
 
 
 def append_wall_mounts(parts, base_route, side, height, section_half_width, section_half_height,
-                       clearance, spacing, stem_radius, stem_sides, plate_radius, corner_margin):
+                       clearance, spacing, stem_radius, stem_sides, plate_radius, corner_margin,
+                       precise_underside=False):
     """Place brackets on straight runs, clear of bends and terminating end caps."""
     path = [point + UP * height for point in base_route]
     for segment, (start, end) in enumerate(zip(path, path[1:])):
@@ -35,8 +36,14 @@ def append_wall_mounts(parts, base_route, side, height, section_half_width, sect
             distance = start_margin + available * (index / (count - 1) if count > 1 else .5)
             target = start.lerp(end, distance / length)
             # The small upright ends inside the underside of the handrail.
-            tip = target - UP * (section_half_height * .65)
-            arm = target - UP * (section_half_height + .065)
+            if precise_underside:
+                horizontal = Vector((end.x - start.x, end.y - start.y, 0)).length
+                depth = section_half_height * length / horizontal
+                tip = target - UP * (depth - min(.003, section_half_height * .1))
+                arm = target - UP * (depth + .065)
+            else:
+                tip = target - UP * (section_half_height * .65)
+                arm = target - UP * (section_half_height + .065)
             plate_back = arm + normal * (section_half_width + clearance)
             face = plate_back - normal * .006
             _append_tube(parts['wall_mount_plates'], (face, plate_back), plate_radius, max(8, stem_sides))

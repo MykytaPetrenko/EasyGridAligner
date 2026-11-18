@@ -108,6 +108,40 @@ Each type retains its own section inputs when switching. Existing stairs keep Ty
 settings; the new Type 2 dimensions are initialized on Update. Selecting any new corner connector
 opens its owning stairs in the configurator, just like other generated parts.
 
+## Type 3: vertical balusters and contrasting handrail
+
+Select **Railing System > Type > Type 3 · Vertical Balusters** for a metal balustrade with vertical
+rectangular infill bars, a continuous sloping bottom rail, square support posts with integral base
+plates, and a contrasting rectangular handrail. The handrail and bottom rail share miter rings at
+direction changes instead of using separate elbow fittings. Balusters stay vertical; their ends
+are cut to match the sloping underside/top of the adjoining rails.
+
+A continuous metal **top rail** sits flush beneath the handrail cap, including slopes and landing
+turns. It shares **Bottom Rail Width** and has its own **Top Rail Thickness** (default 15 mm,
+less than the 35 mm default bottom rail thickness). Balusters and support posts terminate at the
+underside of this metal top rail. The cap height stays unchanged and the top rail uses the Metal
+material slot. Wall-mounted Type 3 handrails include this support rail too, with brackets meeting
+its underside. Existing stairs initialize the thickness below their saved bottom rail thickness.
+
+The generated **Vertical Baluster Railing** assembly has exactly **two material slots**:
+
+1. **Metal** — posts, base plates, balusters, bottom rail and top rail; default dark powder-coated metal.
+2. **Handrail** — upper graspable member; default warm timber color.
+
+Both material choices are stored on the stair configuration. Set them in the configurator's
+**Materials · 2 Slots** section or edit the assembly's normal Blender material slots. The choices
+survive geometry updates, style/mount switches, copied stair configurations and save/reopen.
+Pending material edits also survive saving with Auto Update disabled.
+
+**Baluster Spacing** controls target spacing between vertical bar centers. **Baluster Width / Depth**
+set the rectangular section across/along the railing. Handrail width/thickness and bottom rail
+width/thickness/clearance are independent; **Post Spacing** and **Square Post Width** control the
+support posts. Bottom Clearance keeps the sloping rail above the step noses.
+
+Inner/outer mounting and Include Landings work as for the other styles. In Wall Mounted mode, only
+the contrasting handrail is generated, with metal brackets and mounting plates. Those objects use
+the same Metal/Handrail slot order. Selecting the assembled railing opens its owning stair settings.
+
 ## Inner/outer mounting and coverage
 
 Each side has its own **None / Flight Mounted / Wall Mounted** mode and **Include Landings** switch:
@@ -256,5 +290,10 @@ schema migration and separate slope/plan turns at overhanging landings.
 directions, independent flight-only coverage, closed bracket/wall meshes, handrail-wall clearance,
 bracket spacing, preview toggling with Auto Update off, orphan-mesh cleanup, material persistence,
 failed-rebuild recovery, schema migration, saved settings and copied configurations.
+
+`tests/test_stairs_type3.py` verifies the two material slots and face assignments, vertical bar
+sections and inclined end cuts, bar/post spacing, turn/gap/coverage combinations, mixed wall/flight
+mounting, Blender slot edits, material edits with Auto Update off, save/reopen/copy behavior,
+unchanged existing styles during schema migration, closed solids and failed-rebuild recovery.
 
 For a recessed profile, start with **Riser Offset = 0.04 m**, **Slab Height = 0.12 m**, **Upper Bevel Width = 0.018 m / 5 segments** and **Lower Bevel Width = 0.006 m / 3 segments**, with both profiles at `0.5`. These controls are in the **Stairs Configurator** side panel. The development junction points directly to the EasyGridAligner source folder; procedural geometry is in `geometry/`, object settings in `props/`, rebuilding in `services/`, actions in `ops/`, and panels in `ui/`.

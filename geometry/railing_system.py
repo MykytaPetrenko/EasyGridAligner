@@ -1,4 +1,4 @@
-"""Independent inner/outer mounting and landing coverage for both rail styles."""
+"""Independent inner/outer mounting and landing coverage for all railing styles."""
 from inspect import signature
 
 import bmesh
@@ -89,9 +89,13 @@ def build_railing_system_meshes(
                               rail_outer_enabled=True)
             wall = mode == 'WALL'
             if wall:
-                rectangular = parameters['rail_type'] == 'TYPE_2'
-                half_width = parameters['rail_handrail_width'] / 2 if rectangular else parameters['rail_radius']
-                half_height = parameters['rail_handrail_thickness'] / 2 if rectangular else parameters['rail_radius']
+                rectangular = parameters['rail_type'] != 'TYPE_1'
+                if parameters['rail_type'] == 'TYPE_3':
+                    half_width = parameters['rail_type3_handrail_width'] / 2
+                    half_height = parameters['rail_type3_handrail_thickness'] / 2 + parameters['rail_top_rail_height']
+                else:
+                    half_width = parameters['rail_handrail_width'] / 2 if rectangular else parameters['rail_radius']
+                    half_height = parameters['rail_handrail_thickness'] / 2 if rectangular else parameters['rail_radius']
                 parameters.update(handrail_only=True, rail_lower_count=0,
                                   rail_inset=half_width + rail_wall_clearance)
             sections = [(Matrix.Identity(4), stairs)] if include else [
@@ -116,7 +120,7 @@ def build_railing_system_meshes(
                     append_wall_mounts(wall_parts, route, side, parameters['rail_height'], half_width,
                                        half_height, rail_wall_clearance, rail_wall_bracket_spacing,
                                        parameters['rail_connector_radius'], stem_sides, rail_wall_plate_radius,
-                                       radius)
+                                       radius, precise_underside=parameters['rail_type'] == 'TYPE_3')
                 if rail_preview_walls:
                     # Trace the actual stair boundary. Offsetting handrail control
                     # rings can collapse the short returns at landing apertures.

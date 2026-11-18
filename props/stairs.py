@@ -2,11 +2,15 @@ import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, PointerProperty, StringProperty
 from bpy.types import PropertyGroup
 
-from ..services.stairs import request_rebuild, sync_legacy_railing
+from ..services.stairs import request_rebuild, request_railing_material_rebuild, sync_legacy_railing
 
 
 def on_stairs_changed(self, context):
     request_rebuild(self, context)
+
+
+def on_railing_material_changed(self, context):
+    request_railing_material_rebuild(self, context)
 
 
 def on_legacy_left_changed(self, context):
@@ -87,7 +91,19 @@ class MODULAR_ASSETS_PG_stairs(PropertyGroup):
     start_cut_edge_flow: EnumProperty(name='Cut Edge Flow', items=(('CORNER', 'Corner', 'Keep the top surface continuous'), ('THROUGH', 'Through', 'Continue cut edges through the top')), default='THROUGH', update=on_stairs_changed)
 
     rail_enabled: BoolProperty(name='Enable Railing', default=False, update=on_stairs_changed)
-    rail_type: EnumProperty(name='Type', items=(('TYPE_1', 'Type 1 · Tubular', 'Tubular handrail with elbows and couplings'), ('TYPE_2', 'Type 2 · Rectangular', 'Square posts, rectangular handrail and straight infill rails with fixed corner connectors')), default='TYPE_1', update=on_stairs_changed)
+    rail_type: EnumProperty(name='Type', items=(('TYPE_1', 'Type 1 · Tubular', 'Tubular handrail with elbows and couplings'), ('TYPE_2', 'Type 2 · Rectangular', 'Square posts, rectangular handrail and straight infill rails with fixed corner connectors'), ('TYPE_3', 'Type 3 · Vertical Balusters', 'Vertical metal balusters and bottom rail with a contrasting continuous handrail; two material slots')), default='TYPE_1', update=on_stairs_changed)
+    rail_materials_dirty: BoolProperty(default=False)
+    rail_metal_material: PointerProperty(name='Metal Material', type=bpy.types.Material, description='Slot 1: posts, balusters, bottom rail and wall brackets for Type 3', update=on_railing_material_changed)
+    rail_handrail_material: PointerProperty(name='Handrail Material', type=bpy.types.Material, description='Slot 2: the upper handrail for Type 3', update=on_railing_material_changed)
+    rail_type3_handrail_width: FloatProperty(name='Handrail Width', default=.065, min=.01, soft_max=.15, unit='LENGTH', update=on_stairs_changed)
+    rail_type3_handrail_thickness: FloatProperty(name='Handrail Thickness', default=.04, min=.005, soft_max=.08, unit='LENGTH', update=on_stairs_changed)
+    rail_baluster_spacing: FloatProperty(name='Baluster Spacing', default=.12, min=.025, soft_max=.3, unit='LENGTH', description='Target center-to-center spacing of the vertical infill bars', update=on_stairs_changed)
+    rail_baluster_width: FloatProperty(name='Baluster Width', default=.016, min=.004, soft_max=.04, unit='LENGTH', description='Cross-section dimension across the railing', update=on_stairs_changed)
+    rail_baluster_depth: FloatProperty(name='Baluster Depth', default=.025, min=.004, soft_max=.06, unit='LENGTH', description='Cross-section dimension along the railing', update=on_stairs_changed)
+    rail_base_rail_width: FloatProperty(name='Bottom Rail Width', default=.03, min=.01, soft_max=.08, unit='LENGTH', update=on_stairs_changed)
+    rail_base_rail_height: FloatProperty(name='Bottom Rail Thickness', default=.035, min=.01, soft_max=.08, unit='LENGTH', update=on_stairs_changed)
+    rail_top_rail_height: FloatProperty(name='Top Rail Thickness', default=.015, min=.001, soft_max=.03, unit='LENGTH', description='Continuous metal rail beneath the handrail; shares Bottom Rail Width and must be thinner than Bottom Rail Thickness', update=on_stairs_changed)
+    rail_base_clearance: FloatProperty(name='Bottom Clearance', default=.05, min=0.0, soft_max=.2, unit='LENGTH', description='Minimum clearance above the step noses; the bottom rail follows the stair slope', update=on_stairs_changed)
     rail_left: BoolProperty(name='Left Side', default=True, update=on_legacy_left_changed)
     rail_right: BoolProperty(name='Right Side', default=True, update=on_legacy_right_changed)
     rail_outer_enabled: BoolProperty(name='Outer Railing', default=True, update=on_legacy_outer_changed)

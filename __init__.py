@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Modular Stair Generator",
     "author": "Mykyta Petrenko (aka SqueezyPixels)",
-    "version": (1, 5, 0),
+    "version": (1, 6, 1),
     "blender": (4, 1, 0),
     "location": "View3D > Add > Mesh > Modular Stairs; Sidebar > Modular",
     "description": "Configure persistent stairs and procedural railings, with UV and grid-snapping tools.",

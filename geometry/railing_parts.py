@@ -220,8 +220,8 @@ def _append_post(part, center, profile, sides):
     smooth.append(False)
 
 
-def _closest_on_path(point, path):
-    best, distance = None, float('inf')
+def _closest_on_path(point, path, with_segment=False):
+    best, best_segment, distance = None, None, float('inf')
     for start, end in zip(path, path[1:]):
         delta = end - start
         factor = max(0.0, min(1.0, (point - start).dot(delta) / delta.length_squared))
@@ -229,7 +229,8 @@ def _closest_on_path(point, path):
         candidate_distance = (point - candidate).length_squared
         if candidate_distance < distance:
             best, distance = candidate, candidate_distance
-    return best
+            best_segment = (start, end)
+    return (best, best_segment) if with_segment else best
 
 
 def _make_mesh(name, part):

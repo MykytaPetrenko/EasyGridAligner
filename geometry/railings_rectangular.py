@@ -19,9 +19,9 @@ def _rect_axes(direction):
     return width, direction.cross(width).normalized()
 
 
-def _rect_offsets(direction, width, thickness):
+def _rect_offsets(direction, width, thickness, vertical_offset=0.0):
     horizontal, vertical = _rect_axes(direction)
-    return [horizontal * x * width / 2 + vertical * y * thickness / 2
+    return [horizontal * x * width / 2 + vertical * (y * thickness / 2 + vertical_offset)
             for x, y in ((-1, -1), (1, -1), (1, 1), (-1, 1))]
 
 
@@ -43,7 +43,7 @@ def _append_loft(part, rings, smooth_sides=False):
     return offset
 
 
-def _corner_geometry(previous, point, following, width, thickness, radius, sides):
+def _corner_geometry(previous, point, following, width, thickness, radius, sides, vertical_offset=0.0):
     incoming = (point - previous).normalized()
     outgoing = (following - point).normalized()
     normal = incoming + outgoing
@@ -54,8 +54,8 @@ def _corner_geometry(previous, point, following, width, thickness, radius, sides
     if denominator <= EPSILON:
         raise ValueError('The fixed corner angle is too tight')
     if radius is None:
-        first = _rect_offsets(incoming, width, thickness)
-        last = _rect_offsets(outgoing, width, thickness)
+        first = _rect_offsets(incoming, width, thickness, vertical_offset)
+        last = _rect_offsets(outgoing, width, thickness, vertical_offset)
         middle = []
         for start_offset, end_offset in zip(first, last):
             a = start_offset - incoming * start_offset.dot(normal) / denominator
