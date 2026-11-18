@@ -16,7 +16,7 @@ SYSTEM_FIELDS = tuple(name for name in signature(build_railing_system_meshes).pa
 PLATE_FIELDS = tuple(name for name in signature(build_tread_plate_mesh).parameters if name not in ('name', 'stairs'))
 INPUT_FIELDS = STAIR_FIELDS + RAIL_FIELDS + SYSTEM_FIELDS + PLATE_FIELDS + ('rail_enabled',)
 _REBUILDING = set()
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 PART_NAMES = {'handrail': 'Handrail', 'lower_rails': 'Infill Rails', 'posts': 'Posts',
               'connectors': 'Handrail Supports', 'couplings': 'Coupling Sleeves',
               'handrail_corners': 'Handrail Corner Connectors', 'infill_corners': 'Infill Corner Connectors',

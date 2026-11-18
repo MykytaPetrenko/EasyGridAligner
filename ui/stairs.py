@@ -156,6 +156,32 @@ class MODULAR_ASSETS_PT_stairs(bpy.types.Panel):
                               ('rail_lower_radius', 'rail_lower_segments', 'rail_lower_clearance'))
                 for name in names:
                     sub.prop(settings, name)
+            sub = controls.box()
+            if dropdown(sub, settings, 'show_rail_ends', text='Ends & Extensions'):
+                sub.prop(settings, 'rail_start_extension')
+                sub.prop(settings, 'rail_end_extension')
+                if has_flight or balusters:
+                    sub.prop(settings, 'rail_infill_start_setback', text='Metal Start Setback' if balusters else 'Infill Start Setback')
+                    sub.prop(settings, 'rail_infill_end_setback', text='Metal End Setback' if balusters else 'Infill End Setback')
+            if balusters:
+                sub = controls.box()
+                if dropdown(sub, settings, 'show_timber_details', text='Handrail Boards & Bevels'):
+                    sub.prop(settings, 'rail_cap_split')
+                    boards = sub.column()
+                    boards.enabled = settings.rail_cap_split
+                    boards.prop(settings, 'rail_cap_max_length')
+                    boards.prop(settings, 'rail_cap_joint_gap')
+                    sub.separator()
+                    for group in ('top', 'bottom', 'start', 'end'):
+                        row = sub.row(align=True)
+                        row.prop(settings, f'rail_cap_bevel_{group}')
+                        amount = row.row()
+                        amount.enabled = getattr(settings, f'rail_cap_bevel_{group}')
+                        amount.prop(settings, f'rail_cap_{group}_bevel_width')
+                    bevel = sub.column()
+                    bevel.enabled = any(getattr(settings, f'rail_cap_bevel_{group}') for group in ('top', 'bottom', 'start', 'end'))
+                    bevel.prop(settings, 'rail_cap_bevel_segments')
+                    bevel.prop(settings, 'rail_cap_bevel_profile')
             sub = controls.box() if has_flight else None
             if has_flight and dropdown(sub, settings, 'show_rail_posts', text='Posts' if balusters else 'Posts & Handrail Supports'):
                 if balusters:

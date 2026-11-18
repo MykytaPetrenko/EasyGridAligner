@@ -4,7 +4,8 @@ from math import ceil, sqrt
 import bpy
 from mathutils import Vector
 
-from .railing_parts import _clean_path, _closest_on_path, _make_mesh, _railing_route
+from .railing_parts import _clean_path, _closest_on_path, _extend_path, _make_mesh, _railing_route, _trim_path
+from .railing_timber import append_timber_cap
 from .railings_rectangular import _append_loft, _corner_geometry, _rect_offsets
 from .stairs import _flight_layout
 
@@ -13,8 +14,7 @@ EPSILON = 1e-6
 UP = Vector((0, 0, 1))
 
 
-def _append_mitered_bar(part, points, width, thickness, vertical_offset=0.0):
-    """A continuous rectangular member, with shared miter rings and only two caps."""
+def _mitered_bar_rings(points, width, thickness, vertical_offset=0.0):
     points = _clean_path(points)
     first = _rect_offsets((points[1] - points[0]).normalized(), width, thickness, vertical_offset)
     rings = [[points[0] + offset for offset in first]]
@@ -25,7 +25,12 @@ def _append_mitered_bar(part, points, width, thickness, vertical_offset=0.0):
         rings.append([point + offset for offset in data[3]])
     last = _rect_offsets((points[-1] - points[-2]).normalized(), width, thickness, vertical_offset)
     rings.append([points[-1] + offset for offset in last])
-    _append_loft(part, rings)
+    return rings
+
+
+def _append_mitered_bar(part, points, width, thickness, vertical_offset=0.0):
+    """A continuous rectangular member, with shared miter rings and only two caps."""
+    _append_loft(part, _mitered_bar_rings(points, width, thickness, vertical_offset))
 
 
 def _upright_ring(center, across, along, width, depth, height, gradient=None):
@@ -55,6 +60,8 @@ def build_baluster_railing_meshes(
     rail_base_rail_width=.03, rail_base_rail_height=.035, rail_base_clearance=.05,
     rail_top_rail_height=.015,
     rail_corner_length=.06, handrail_only=False,
+    rail_start_extension=.05, rail_end_extension=.05,
+    rail_infill_start_setback=.05, rail_infill_end_setback=.05, cap_options=None,
 ):
     dimensions = (rail_type3_handrail_width, rail_type3_handrail_thickness)
     if min(dimensions) <= EPSILON:
@@ -88,10 +95,13 @@ def build_baluster_railing_meshes(
     for side, enabled in ((-1, rail_left), (1, rail_right)):
         if not enabled or (stairs['flight_count'] > 1 and not rail_outer_enabled and side != inner):
             continue
-        controls, bases = _railing_route(stairs, frames, landings, side, rail_inset,
+        route, bases = _railing_route(stairs, frames, landings, side, rail_inset,
                                          rail_corner_length, rail_post_spacing)
-        _append_mitered_bar(wood, [point + UP * rail_height for point in controls],
-                            rail_type3_handrail_width, rail_type3_handrail_thickness)
+        cap_path = [point + UP * rail_height for point in _extend_path(route, rail_start_extension, rail_end_extension)]
+        cap_rings = _mitered_bar_rings(cap_path, rail_type3_handrail_width, rail_type3_handrail_thickness)
+        append_timber_cap(wood, cap_path, cap_rings, rail_type3_handrail_width, rail_type3_handrail_thickness,
+                          smooth=stairs.get('use_smooth_shading', True), **(cap_options or {}))
+        controls = _trim_path(route, rail_infill_start_setback, rail_infill_end_setback)
         # Offset within the cross-section, perpendicular to each run. This
         # shares the timber underside plane on slopes and at mitered turns.
         _append_mitered_bar(metal, [point + UP * rail_height for point in controls],
@@ -108,6 +118,9 @@ def build_baluster_railing_meshes(
         post_centers = []
         for base in bases:
             target, segment = _closest_on_path(base - UP * stairs['riser'] / 2, controls, with_segment=True)
+            original_target = _closest_on_path(base - UP * stairs['riser'] / 2, route)
+            if (target - original_target).length > EPSILON:
+                continue
             if any((target - existing).length < max(.1, rail_post_size * 2) for existing in post_centers):
                 continue
             post_centers.append(target)

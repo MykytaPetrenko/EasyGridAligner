@@ -5,7 +5,7 @@ import bpy
 from mathutils import Vector
 
 from .stairs import _flight_layout
-from .railing_parts import _append_tube, _clean_path, _closest_on_path, _make_mesh, _railing_route
+from .railing_parts import _append_tube, _clean_path, _closest_on_path, _extend_path, _make_mesh, _railing_route, _trim_path
 
 
 EPSILON = 1e-6
@@ -140,6 +140,8 @@ def build_rectangular_railing_meshes(
     rail_post_spacing=.9, rail_connector_radius=.008, rail_connector_length=.07,
     rail_connector_mode='SEPARATE', rail_connector_segments=8, rail_connector_match_post=False,
     handrail_only=False,
+    rail_start_extension=.05, rail_end_extension=.05,
+    rail_infill_start_setback=.05, rail_infill_end_setback=.05,
 ):
     if min(rail_handrail_width, rail_handrail_thickness, rail_post_size, rail_corner_length) <= EPSILON:
         raise ValueError('Handrail, post and corner connector dimensions must be positive')
@@ -173,15 +175,17 @@ def build_rectangular_railing_meshes(
             continue
         controls, bases = _railing_route(stairs, frames, landings, side, rail_inset,
                                          rail_corner_length, rail_post_spacing)
-        path = [point + Vector((0, 0, rail_height)) for point in controls]
+        original_path = [point + Vector((0, 0, rail_height)) for point in controls]
+        path = _extend_path(original_path, rail_start_extension, rail_end_extension)
         _append_fixed_rail(parts['handrail'], parts['handrail_corners'], path,
                             rail_handrail_width, rail_handrail_thickness, None, 4,
                             rail_corner_length, rail_corner_allowance)
         if handrail_only:
             continue
+        infill_path = _trim_path(original_path, rail_infill_start_setback, rail_infill_end_setback) if rail_lower_count else []
         for index in range(rail_lower_count):
             height = rail_lower_clearance + (rail_height - .1 - rail_lower_clearance) * (index + 1) / (rail_lower_count + 1)
-            lower = [point + Vector((0, 0, height - rail_height)) for point in path]
+            lower = [point + Vector((0, 0, height - rail_height)) for point in infill_path]
             sharp_infill_rings.extend(_append_fixed_rail(
                 parts['lower_rails'], parts['infill_corners'], lower, 0, 0,
                 rail_lower_radius, rail_lower_segments, rail_corner_length, rail_corner_allowance))

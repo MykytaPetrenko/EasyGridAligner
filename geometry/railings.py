@@ -16,6 +16,8 @@ from .railing_parts import (
     _append_post,
     _closest_on_path,
     _make_mesh,
+    _extend_path,
+    _trim_path,
 )
 
 
@@ -37,6 +39,14 @@ def build_railing_meshes(
     rail_baluster_spacing=.12, rail_baluster_width=.016, rail_baluster_depth=.025,
     rail_base_rail_width=.03, rail_base_rail_height=.035, rail_base_clearance=.05,
     rail_top_rail_height=.015,
+    rail_start_extension=.05, rail_end_extension=.05,
+    rail_infill_start_setback=.05, rail_infill_end_setback=.05,
+    rail_cap_split=False, rail_cap_max_length=2.0, rail_cap_joint_gap=.003,
+    rail_cap_bevel_top=False, rail_cap_bevel_bottom=False,
+    rail_cap_bevel_start=False, rail_cap_bevel_end=False,
+    rail_cap_top_bevel_width=.002, rail_cap_bottom_bevel_width=.002,
+    rail_cap_start_bevel_width=.002, rail_cap_end_bevel_width=.002,
+    rail_cap_bevel_segments=3, rail_cap_bevel_profile=.5,
     handrail_only=False,
 ):
     if rail_type == 'TYPE_3':
@@ -49,6 +59,14 @@ def build_railing_meshes(
             rail_baluster_depth=rail_baluster_depth, rail_base_rail_width=rail_base_rail_width,
             rail_base_rail_height=rail_base_rail_height, rail_base_clearance=rail_base_clearance,
             rail_top_rail_height=rail_top_rail_height,
+            rail_start_extension=rail_start_extension, rail_end_extension=rail_end_extension,
+            rail_infill_start_setback=rail_infill_start_setback, rail_infill_end_setback=rail_infill_end_setback,
+            cap_options=dict(split=rail_cap_split, maximum_length=rail_cap_max_length, gap=rail_cap_joint_gap,
+                             bevel_top=rail_cap_bevel_top, bevel_bottom=rail_cap_bevel_bottom,
+                             bevel_start=rail_cap_bevel_start, bevel_end=rail_cap_bevel_end,
+                             top_width=rail_cap_top_bevel_width, bottom_width=rail_cap_bottom_bevel_width,
+                             start_width=rail_cap_start_bevel_width, end_width=rail_cap_end_bevel_width,
+                             bevel_segments=rail_cap_bevel_segments, bevel_profile=rail_cap_bevel_profile),
             rail_corner_length=rail_corner_length, handrail_only=handrail_only)
     if rail_type == 'TYPE_2':
         return build_rectangular_railing_meshes(
@@ -61,7 +79,9 @@ def build_railing_meshes(
             rail_post_spacing=rail_post_spacing, rail_connector_radius=rail_connector_radius,
             rail_connector_length=rail_connector_length, rail_connector_mode=rail_connector_mode,
             rail_connector_segments=rail_connector_segments, rail_connector_match_post=rail_connector_match_post,
-            handrail_only=handrail_only)
+            handrail_only=handrail_only, rail_start_extension=rail_start_extension,
+            rail_end_extension=rail_end_extension, rail_infill_start_setback=rail_infill_start_setback,
+            rail_infill_end_setback=rail_infill_end_setback)
     if rail_type != 'TYPE_1':
         raise ValueError('Choose railing Type 1, Type 2 or Type 3')
     if not handrail_only and rail_height <= stairs['riser'] / 2 + rail_radius + rail_connector_length + .03:
@@ -94,7 +114,8 @@ def build_railing_meshes(
         controls, post_bases = _railing_route(stairs, frames, landings, side, rail_inset,
                                              rail_bend_radius, rail_post_spacing)
         controls = [point + Vector((0, 0, rail_height)) for point in controls]
-        path, straights = _rounded_path(controls, rail_bend_radius, rail_bend_segments, rail_radius)
+        path, straights = _rounded_path(_extend_path(controls, rail_start_extension, rail_end_extension),
+                                        rail_bend_radius, rail_bend_segments, rail_radius)
         _append_tube(parts['handrail'], path, rail_radius, rail_segments)
         for start, end, start_joint, end_joint in straights:
             direction, length = (end - start).normalized(), (end - start).length
@@ -109,9 +130,13 @@ def build_railing_meshes(
                                rail_radius * .99, rail_radius + rail_coupling_thickness, rail_segments)
         if handrail_only:
             continue
+        infill_path = []
+        if rail_lower_count:
+            infill_path, _ = _rounded_path(_trim_path(controls, rail_infill_start_setback, rail_infill_end_setback),
+                                            rail_bend_radius, rail_bend_segments, rail_radius)
         for index in range(rail_lower_count):
             height = rail_lower_clearance + (rail_height - .1 - rail_lower_clearance) * (index + 1) / (rail_lower_count + 1)
-            lower = [point + Vector((0, 0, height - rail_height)) for point in path]
+            lower = [point + Vector((0, 0, height - rail_height)) for point in infill_path]
             _append_tube(parts['lower_rails'], lower, rail_lower_radius, rail_lower_segments)
         placed = []
         for base in post_bases:

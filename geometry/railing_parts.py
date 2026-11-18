@@ -58,6 +58,38 @@ def _rounded_path(points, radius, segments, pipe_radius):
     return _clean_path(dense), straights
 
 
+def _trim_path(points, start, end):
+    """Trim by arc length, retaining any intervening corners."""
+    points = _clean_path(points)
+    if min(start, end) < 0:
+        raise ValueError('Rail end setbacks cannot be negative')
+    stations = [0.0]
+    for first, second in zip(points, points[1:]):
+        stations.append(stations[-1] + (second - first).length)
+    stop = stations[-1] - end
+    if stop - start <= EPSILON:
+        raise ValueError('End setbacks leave no rail length; reduce Start / End Setback')
+    result = []
+    for first, second, low, high in zip(points, points[1:], stations, stations[1:]):
+        left, right = max(start, low), min(stop, high)
+        if right - left <= EPSILON:
+            continue
+        result.extend((first.lerp(second, (left - low) / (high - low)),
+                       first.lerp(second, (right - low) / (high - low))))
+    return _clean_path(result)
+
+
+def _extend_path(points, start, end):
+    points = _clean_path(points)
+    if min(start, end) < 0:
+        raise ValueError('Handrail end extensions cannot be negative')
+    first_direction = (points[1] - points[0]).normalized()
+    last_direction = (points[-1] - points[-2]).normalized()
+    points[0] -= first_direction * start
+    points[-1] += last_direction * end
+    return points
+
+
 def _landing_route(p, landing, side, inset, radius):
     width, gap = p['width'], p['flight_gap']
     length = p['step_count'] * p['tread']

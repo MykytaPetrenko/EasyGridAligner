@@ -138,6 +138,24 @@ set the rectangular section across/along the railing. Handrail width/thickness a
 width/thickness/clearance are independent; **Post Spacing** and **Square Post Width** control the
 support posts. Bottom Clearance keeps the sloping rail above the step noses.
 
+**Handrail Boards & Bevels** provides four optional edge groups: **Top Edge Bevel**, **Bottom Edge
+Bevel**, **Start Cap Bevel** and **End Cap Bevel**. Each has its own width; segment count and
+profile are shared. Bevels affect the cap only, with smooth shading on the rounded strips when
+Smooth Shading is enabled. Widths are clamped below half the cap's smaller cross-section dimension.
+
+Enable **Split into Boards** to create separate closed timber pieces at each direction change.
+Long straight runs are further divided by **Maximum Board Length**. **Joint Gap** controls the
+clear distance perpendicular to the joint plane, including angled miter joints; default 3 mm.
+Each board receives the selected start/end bevels. Metal top/bottom rails remain continuous and
+the assembly retains exactly two material slots.
+
+**Ends & Extensions** applies to all three styles. **Handrail Start Extension / Handrail End
+Extension** move the open handrail ends beyond the original route, independently. **Infill Start
+Setback / Infill End Setback** shorten the intermediate rails of Types 1/2, and the metal frame of
+Type 3. Each value defaults to 50 mm. In Type 3 these fields are labeled **Metal Start / End Setback**.
+Offsets follow the local sloping or horizontal direction. For flight-only coverage, they apply to
+each flight's free ends; internal landing corners keep their continuous route.
+
 Inner/outer mounting and Include Landings work as for the other styles. In Wall Mounted mode, only
 the contrasting handrail is generated, with metal brackets and mounting plates. Those objects use
 the same Metal/Handrail slot order. Selecting the assembled railing opens its owning stair settings.
@@ -295,5 +313,10 @@ failed-rebuild recovery, schema migration, saved settings and copied configurati
 sections and inclined end cuts, bar/post spacing, turn/gap/coverage combinations, mixed wall/flight
 mounting, Blender slot edits, material edits with Auto Update off, save/reopen/copy behavior,
 unchanged existing styles during schema migration, closed solids and failed-rebuild recovery.
+
+`tests/test_stairs_timber.py` checks all four cap bevel groups separately and together, split/continuous
+caps, closed solids under bevel clamping, board lengths and perpendicular joint gaps, asymmetric
+extensions/setbacks for all three styles, wall/flight/landing combinations, saved settings and recovery
+from impossible gaps without replacing the previous geometry.
 
 For a recessed profile, start with **Riser Offset = 0.04 m**, **Slab Height = 0.12 m**, **Upper Bevel Width = 0.018 m / 5 segments** and **Lower Bevel Width = 0.006 m / 3 segments**, with both profiles at `0.5`. These controls are in the **Stairs Configurator** side panel. The development junction points directly to the EasyGridAligner source folder; procedural geometry is in `geometry/`, object settings in `props/`, rebuilding in `services/`, actions in `ops/`, and panels in `ui/`.

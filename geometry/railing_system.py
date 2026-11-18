@@ -6,7 +6,7 @@ import bpy
 from mathutils import Matrix
 
 from .railings import build_railing_meshes
-from .railing_parts import _make_mesh, _railing_route
+from .railing_parts import _make_mesh, _railing_route, _trim_path
 from .railing_wall import append_preview_wall, append_wall_mounts
 from .stairs import _flight_layout
 
@@ -117,6 +117,8 @@ def build_railing_system_meshes(
                               for frame in frames]
                 stem_sides = parameters['rail_connector_segments']
                 for route in routes:
+                    if parameters['rail_type'] == 'TYPE_3':
+                        route = _trim_path(route, parameters['rail_infill_start_setback'], parameters['rail_infill_end_setback'])
                     append_wall_mounts(wall_parts, route, side, parameters['rail_height'], half_width,
                                        half_height, rail_wall_clearance, rail_wall_bracket_spacing,
                                        parameters['rail_connector_radius'], stem_sides, rail_wall_plate_radius,
