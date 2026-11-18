@@ -20,7 +20,7 @@ New stairs appear at the 3D cursor; when configured stairs are selected, New Sta
 Select the stair mesh or any generated railing part to edit the owning stairs. All stair, landing,
 bevel, shading and railing inputs are stored in **Object > modular_stairs** and saved in the `.blend`.
 Sections use collapsible controls: Steps & Slab, Flights & Landings, Reinforcement, Bevels,
-Shading, Start Cut and Railings. Each object keeps its own settings and section state.
+Shading, Start Cut and Railing System. Each object keeps its own settings and section state.
 
 **Auto Update** rebuilds geometry when a parameter changes. Disable it while changing many inputs,
 then press **Update**, or enable Auto Update again. Rebuilds preserve the stair object's position,
@@ -28,8 +28,9 @@ rotation, scale and material slots, and preserve material assignments on each ra
 Invalid settings display an error and retain the previous geometry. Switch to Object Mode before
 updating; mesh edits are replaced by the next rebuild.
 
-Generated railings are child meshes of the stairs, grouped as Handrail, Lower Rails, Posts,
-Connectors and Couplings. Moving the stairs moves the assembly. User-added children are retained.
+Generated railing parts are child meshes of the stairs, grouped as Handrail, Infill Rails, Posts,
+Handrail Supports and Coupling Sleeves. Integral stems are part of Posts and have no separate support
+object. Moving the stairs moves the assembly. User-added children are retained.
 No timers, frame handlers or dependency-graph handlers are installed, and registering the addon or
 loading a file does not rebuild saved objects.
 
@@ -39,22 +40,47 @@ updating the addon to load the new modules.
 
 ## Type 1 railings
 
-In **Railings**, enable **Enable Railings** and choose the left/right sides. The railing follows
+In **Railing System**, enable **Enable Railing** and choose the left/right sides. The railing follows
 flights and the inner/outer landing routes, including 90° and 180° turns in either direction.
+**Outer Railing** can disable the outer route on multi-flight stairs while keeping the inner route.
+Its interpretation follows Turn Direction. On a straight single flight, use Left Side / Right Side.
+
+Terminology: **handrail** is the upper graspable tube; **railing system** is the complete assembly.
+The smaller tubes are **infill rails**, the uprights are **posts**, their thin top connections are
+**handrail supports**, and the sleeves at elbows are **coupling sleeves**.
 
 - **Railing Height / Edge Inset** control the centerline above the sloping stair reference and landings,
   and its distance inward from the stair edge.
 - **Handrail Radius / Elbow Radius** control the thick main tube and rounded elbows. Short landing
   segments limit elbow size; configurations too tight for the tube report an error.
 - **Coupling Length / Thickness** control hollow sleeves at both ends of each main-tube elbow.
-- **Lower Tubes** sets the number of thin continuous rails; default `4`, with `0` supported.
+- **Infill Rail Count** sets the number of thin continuous rails; default `4`, with `0` supported.
   Their radius and lower clearance are independent. They have rounded turns and no couplings.
 - **Post Spacing** sets the target frequency. Flight posts snap to tread centers, with posts at the
   first and last steps; landing posts are distributed along the railing route.
-- **Post Radius** controls the uprights and their base flanges. **Connector Radius / Length** control
-  the thinner neck joining each post to the main tube.
-- **Tube Sides / Elbow Segments** control mesh resolution. Main tubes, lower tubes and couplings use
-  a stainless-steel material by default; each generated part can be assigned its own material.
+- **Post Radius** controls the uprights. The base flange, shaft and upper collar are one closed,
+  connected mesh per post, joined by annular shoulder faces; there are no overlapping cylinders or
+  hidden shaft end caps in the flange/collar.
+- **Support Construction** offers **Separate Support** or **Integral Stem**. Separate supports are
+  child geometry as before. An integral stem joins the upper post collar through a flat horizontal
+  annular shoulder and shares its mesh
+  rings, with no cap between the collar and stem. **Support Stem Radius / Length** set its dimensions.
+- Cylinder resolution is independent per component:
+
+  | Component | Default sides | Inheritance |
+  | --- | ---: | --- |
+  | Handrail and coupling sleeves | 16 | Own setting |
+  | Infill rails | 8 | Own setting |
+  | Posts, including flange/collar | 16 | **Same as Handrail** enabled by default |
+  | Separate handrail supports | 8 | **Same as Post** disabled by default |
+  | Integral support stems | Post count | Always follows the effective post setting |
+
+  Disabled resolution fields display the effective inherited count. **Elbow Segments** controls bend
+  tessellation independently. Material assignment remains separate per generated part.
+
+Existing configured objects keep their saved handrail side count. New resolution controls are
+initialized on the next update without replacing saved input values. Restart Blender after the
+addon change and press **Update** on existing stairs to rebuild the post topology.
 
 The **Modular** tab in the 3D View sidebar contains the grid snapping and UV
 tools. UV generation operates on selected faces in Edit Mode, including across
@@ -137,5 +163,10 @@ These checks cover automatic/manual rebuilding, independent and shared-mesh copi
 material preservation, child selection, invalid-input recovery, Type 1 tube/post controls, closed railing
 components, undo, registration lifecycle and save/reopen persistence. Persistence tests write a `.blend`
 in a temporary directory; set `STAIRS_TEST_OUTPUT` to choose the output folder.
+
+`tests/test_stairs_railing_details.py` additionally verifies connected post profiles, the absence of
+internal shaft caps, both support constructions, side-count inheritance, the outer-route switch for
+both turn directions and migration of existing saved configurations. Run it with the same Blender
+command, replacing the Python script path.
 
 For a recessed profile, start with **Riser Offset = 0.04 m**, **Slab Height = 0.12 m**, **Upper Bevel Width = 0.018 m / 5 segments** and **Lower Bevel Width = 0.006 m / 3 segments**, with both profiles at `0.5`. These controls are in the **Stairs Configurator** side panel. The development junction points directly to the EasyGridAligner source folder; procedural geometry is in `geometry/`, object settings in `props/`, rebuilding in `services/`, actions in `ops/`, and panels in `ui/`.

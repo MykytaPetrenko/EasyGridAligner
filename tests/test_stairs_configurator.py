@@ -99,7 +99,7 @@ class ConfiguratorTest(unittest.TestCase):
         self.assertNotIn('lower_rails', {child['modular_stair_part'] for child in root.children})
         root.modular_stairs.rail_right = False
         self.assertFalse(root.modular_stairs.last_error)
-        self.assertEqual(len(parts['handrail'].data.polygons), 22)
+        self.assertEqual(len(parts['handrail'].data.polygons), 18)
 
     def test_invalid_settings_keep_previous_geometry(self):
         root = self.create()
@@ -144,7 +144,10 @@ class ConfiguratorTest(unittest.TestCase):
         handlers = {name: len(getattr(bpy.app.handlers, name)) for name in ('load_post', 'depsgraph_update_post', 'undo_post')}
         root = self.create()
         self.configure(root, flight_count=2, rail_enabled=True, rail_lower_count=3, rail_post_spacing=.75,
-                       use_top_bevel=True, top_bevel_segments=5)
+                       use_top_bevel=True, top_bevel_segments=5, rail_connector_mode='INTEGRATED',
+                       rail_segments=18, rail_lower_segments=10, rail_post_segments=12,
+                       rail_post_match_handrail=False, rail_connector_segments=6,
+                       rail_connector_match_post=True, rail_outer_enabled=False)
         self.assertTrue(all(root.modular_stairs.is_property_set(name) for name in INPUT_FIELDS))
         root.name = 'Persistent Stairs'
         root.location = (2, 3, 4)
@@ -157,7 +160,15 @@ class ConfiguratorTest(unittest.TestCase):
         self.assertEqual(loaded.modular_stairs.rail_lower_count, 3)
         self.assertAlmostEqual(loaded.modular_stairs.rail_post_spacing, .75)
         self.assertEqual(tuple(loaded.location), (2, 3, 4))
-        self.assertEqual(len(loaded.children), 5)
+        self.assertEqual(len(loaded.children), 4)
+        self.assertEqual(loaded.modular_stairs.rail_connector_mode, 'INTEGRATED')
+        self.assertEqual(loaded.modular_stairs.rail_segments, 18)
+        self.assertEqual(loaded.modular_stairs.rail_lower_segments, 10)
+        self.assertEqual(loaded.modular_stairs.rail_post_segments, 12)
+        self.assertFalse(loaded.modular_stairs.rail_post_match_handrail)
+        self.assertEqual(loaded.modular_stairs.rail_connector_segments, 6)
+        self.assertTrue(loaded.modular_stairs.rail_connector_match_post)
+        self.assertFalse(loaded.modular_stairs.rail_outer_enabled)
         loaded.modular_stairs.rail_lower_count = 4
         self.assertFalse(loaded.modular_stairs.last_error)
         EasyGridAligner.unregister()

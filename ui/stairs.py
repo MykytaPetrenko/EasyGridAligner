@@ -80,7 +80,7 @@ class MODULAR_ASSETS_PT_stairs(bpy.types.Panel):
             for name in ('start_cut_width', 'start_cut_edge_flow'):
                 controls.prop(settings, name)
         box = body.box()
-        if dropdown(box, settings, 'show_railings', text='Railings'):
+        if dropdown(box, settings, 'show_railings', text='Railing System'):
             box.prop(settings, 'rail_enabled')
             controls = box.column()
             controls.enabled = settings.rail_enabled
@@ -88,18 +88,36 @@ class MODULAR_ASSETS_PT_stairs(bpy.types.Panel):
             sides = controls.row(align=True)
             sides.prop(settings, 'rail_left', toggle=True)
             sides.prop(settings, 'rail_right', toggle=True)
+            outer = controls.row()
+            outer.enabled = settings.flight_count > 1
+            outer.prop(settings, 'rail_outer_enabled')
             for name in ('rail_height', 'rail_inset', 'rail_lower_count', 'rail_post_spacing'):
                 controls.prop(settings, name)
             sub = controls.box()
-            if dropdown(sub, settings, 'show_rail_tubes', text='Tubes, Elbows & Couplings'):
+            if dropdown(sub, settings, 'show_rail_tubes', text='Handrail, Infill & Sleeves'):
                 for name in ('rail_radius', 'rail_bend_radius', 'rail_bend_segments', 'rail_segments',
-                             'rail_lower_radius', 'rail_lower_clearance', 'rail_coupling_length',
+                             'rail_lower_radius', 'rail_lower_segments', 'rail_lower_clearance', 'rail_coupling_length',
                              'rail_coupling_thickness'):
                     sub.prop(settings, name)
             sub = controls.box()
-            if dropdown(sub, settings, 'show_rail_posts', text='Posts & Connectors'):
-                for name in ('rail_post_radius', 'rail_connector_radius', 'rail_connector_length'):
+            if dropdown(sub, settings, 'show_rail_posts', text='Posts & Handrail Supports'):
+                sub.prop(settings, 'rail_post_radius')
+                sub.prop(settings, 'rail_post_match_handrail')
+                post_sides = sub.row()
+                post_sides.enabled = not settings.rail_post_match_handrail
+                post_sides.prop(settings, 'rail_segments' if settings.rail_post_match_handrail else 'rail_post_segments', text='Post Sides')
+                sub.separator()
+                for name in ('rail_connector_mode', 'rail_connector_radius', 'rail_connector_length'):
                     sub.prop(settings, name)
+                if settings.rail_connector_mode == 'INTEGRATED':
+                    effective = settings.rail_segments if settings.rail_post_match_handrail else settings.rail_post_segments
+                    sub.label(text=f'Integral stem: {effective} sides (same as post)')
+                else:
+                    sub.prop(settings, 'rail_connector_match_post')
+                    support_sides = sub.row()
+                    support_sides.enabled = not settings.rail_connector_match_post
+                    inherited = 'rail_segments' if settings.rail_post_match_handrail else 'rail_post_segments'
+                    support_sides.prop(settings, inherited if settings.rail_connector_match_post else 'rail_connector_segments', text='Support Sides')
 
 
 classes = (MODULAR_ASSETS_PT_stairs,)

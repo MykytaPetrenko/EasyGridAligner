@@ -187,6 +187,30 @@ def _append_sleeve(part, start, end, inner_radius, outer_radius, sides):
             smooth.append(is_smooth)
 
 
+def _append_post(part, center, profile, sides):
+    """One closed stepped post: flange, shaft, collar and optional integral stem.
+
+    Adjacent radius changes share rings and annular quads. Only the two ends
+    are capped; no cylinder or hidden shaft cap passes through the collar.
+    """
+    vertices, faces, smooth = part
+    offset = len(vertices)
+    for height, radius in profile:
+        vertices.extend((center.x + radius * cos(2 * pi * side / sides),
+                         center.y + radius * sin(2 * pi * side / sides), height)
+                        for side in range(sides))
+    faces.append(tuple(offset + side for side in reversed(range(sides))))
+    smooth.append(False)
+    for ring, ((height, _), (next_height, _)) in enumerate(zip(profile, profile[1:])):
+        for side in range(sides):
+            following = (side + 1) % sides
+            faces.append((offset + ring * sides + side, offset + ring * sides + following,
+                          offset + (ring + 1) * sides + following, offset + (ring + 1) * sides + side))
+            smooth.append(abs(next_height - height) > EPSILON)
+    faces.append(tuple(offset + (len(profile) - 1) * sides + side for side in range(sides)))
+    smooth.append(False)
+
+
 def _closest_on_path(point, path):
     best, distance = None, float('inf')
     for start, end in zip(path, path[1:]):
@@ -224,9 +248,12 @@ def _make_mesh(name, part):
 def build_railing_meshes(
     stairs, rail_type='TYPE_1', rail_left=True, rail_right=True, rail_height=1.05,
     rail_inset=.08, rail_radius=.025, rail_bend_radius=.09, rail_bend_segments=6,
-    rail_segments=20, rail_lower_count=4, rail_lower_radius=.008, rail_lower_clearance=.12,
+    rail_segments=16, rail_lower_count=4, rail_lower_radius=.008, rail_lower_clearance=.12,
     rail_post_spacing=.9, rail_post_radius=.018, rail_connector_radius=.008,
     rail_connector_length=.07, rail_coupling_length=.045, rail_coupling_thickness=.006,
+    rail_lower_segments=8, rail_post_segments=16, rail_post_match_handrail=True,
+    rail_connector_segments=8, rail_connector_match_post=False,
+    rail_connector_mode='SEPARATE', rail_outer_enabled=True,
 ):
     if rail_type != 'TYPE_1':
         raise ValueError('Choose railing Type 1')
@@ -242,13 +269,20 @@ def build_railing_meshes(
         raise ValueError('Connector Radius must be smaller than Post Radius')
     if rail_lower_count and rail_lower_clearance >= rail_height - .1:
         raise ValueError('Lower Rail Clearance must be below the handrail')
+    if rail_connector_mode not in ('SEPARATE', 'INTEGRATED'):
+        raise ValueError('Choose Separate Support or Integral Stem')
+    post_sides = rail_segments if rail_post_match_handrail else rail_post_segments
+    support_sides = post_sides if rail_connector_mode == 'INTEGRATED' or rail_connector_match_post else rail_connector_segments
+    if min(rail_segments, rail_lower_segments, post_sides, support_sides) < 3:
+        raise ValueError('Cylinder cross-sections must have at least three sides')
     frames, landings = _flight_layout(
         stairs['flight_count'], stairs['step_count'], stairs['width'], stairs['riser'], stairs['tread'],
         stairs['turn_angle'], stairs['turn_direction'], stairs['landing_depth'], stairs['flight_gap'],
         stairs['landing_side_overhang'], stairs['landing_end_overhang'])
     parts = {name: ([], [], []) for name in ('handrail', 'lower_rails', 'posts', 'connectors', 'couplings')}
+    inner_side = 1 if stairs['turn_direction'] == 'RIGHT' else -1
     for side, enabled in ((-1, rail_left), (1, rail_right)):
-        if not enabled:
+        if not enabled or (stairs['flight_count'] > 1 and not rail_outer_enabled and side != inner_side):
             continue
         controls, post_bases = _railing_route(stairs, frames, landings, side, rail_inset,
                                              rail_bend_radius, rail_post_spacing)
@@ -269,7 +303,7 @@ def build_railing_meshes(
         for index in range(rail_lower_count):
             height = rail_lower_clearance + (rail_height - .1 - rail_lower_clearance) * (index + 1) / (rail_lower_count + 1)
             lower = [point + Vector((0, 0, height - rail_height)) for point in path]
-            _append_tube(parts['lower_rails'], lower, rail_lower_radius, rail_segments)
+            _append_tube(parts['lower_rails'], lower, rail_lower_radius, rail_lower_segments)
         placed = []
         for base in post_bases:
             if any((base - previous).length < .2 for previous in placed):
@@ -279,13 +313,22 @@ def build_railing_meshes(
             top_z = target.z - rail_radius - rail_connector_length
             if top_z <= base.z + .025:
                 raise ValueError('Railing Height leaves no room for a post at the landing')
-            bottom = Vector((target.x, target.y, base.z + .012))
             top = Vector((target.x, target.y, top_z))
-            _append_tube(parts['posts'], (bottom, top), rail_post_radius, rail_segments)
-            _append_tube(parts['posts'], (bottom - Vector((0, 0, .012)), bottom), rail_post_radius * 1.8, rail_segments)
-            _append_tube(parts['posts'], (top - Vector((0, 0, .018)), top), rail_post_radius * 1.12, rail_segments)
             neck_end = Vector((target.x, target.y, target.z - rail_radius * .65))
-            _append_tube(parts['connectors'], (top, neck_end), rail_connector_radius, rail_segments)
+            flange_top = base.z + .012
+            collar_height = min(.018, (top_z - flange_top) * .4)
+            profile = [(base.z, rail_post_radius * 1.8),
+                       (flange_top, rail_post_radius * 1.8),
+                       (flange_top, rail_post_radius),
+                       (top_z - collar_height, rail_post_radius),
+                       (top_z - collar_height, rail_post_radius * 1.12),
+                       (top_z, rail_post_radius * 1.12)]
+            if rail_connector_mode == 'INTEGRATED':
+                profile.extend(((top_z, rail_connector_radius),
+                                (neck_end.z, rail_connector_radius)))
+            else:
+                _append_tube(parts['connectors'], (top, neck_end), rail_connector_radius, support_sides)
+            _append_post(parts['posts'], target, profile, post_sides)
     meshes = {}
     try:
         for name, part in parts.items():

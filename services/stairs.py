@@ -12,8 +12,10 @@ STAIR_FIELDS = tuple(name for name in signature(build_stair_mesh).parameters if 
 RAIL_FIELDS = tuple(name for name in signature(build_railing_meshes).parameters if name != 'stairs')
 INPUT_FIELDS = STAIR_FIELDS + RAIL_FIELDS + ('rail_enabled',)
 _REBUILDING = set()
-PART_NAMES = {'handrail': 'Handrail', 'lower_rails': 'Lower Rails', 'posts': 'Posts',
-              'connectors': 'Connectors', 'couplings': 'Couplings'}
+SCHEMA_VERSION = 2
+PART_NAMES = {'handrail': 'Handrail', 'lower_rails': 'Infill Rails', 'posts': 'Posts',
+              'connectors': 'Handrail Supports', 'couplings': 'Coupling Sleeves'}
+LEGACY_PART_NAMES = {'lower_rails': 'Lower Rails', 'connectors': 'Connectors', 'couplings': 'Couplings'}
 
 
 def find_stairs(obj):
@@ -63,6 +65,11 @@ def rebuild_stairs(root):
     settings = root.modular_stairs
     prepared = {}
     try:
+        if settings.schema_version < SCHEMA_VERSION:
+            for name in INPUT_FIELDS:
+                if not settings.is_property_set(name):
+                    setattr(settings, name, getattr(settings, name))
+            settings.schema_version = SCHEMA_VERSION
         parameters = {name: getattr(settings, name) for name in STAIR_FIELDS}
         prepared['stairs'] = build_stair_mesh(f'{root.name} Mesh', **parameters)
         if settings.rail_enabled:
@@ -93,9 +100,14 @@ def rebuild_stairs(root):
                 previous = child.data
                 child.data = mesh
                 _discard_mesh(previous)
+                if name in LEGACY_PART_NAMES and child.name == f'{root.name} · {LEGACY_PART_NAMES[name]}':
+                    child.name = f'{root.name} · {PART_NAMES[name]}'
             prepared.pop(name)
         for child in children.values():
             previous = child.data
+            if bpy.context.view_layer.objects.active == child and root.name in bpy.context.view_layer.objects:
+                root.select_set(True)
+                bpy.context.view_layer.objects.active = root
             # Preserve user additions parented to a generated part.
             for extra in list(child.children):
                 world = extra.matrix_world.copy()
@@ -135,7 +147,7 @@ def create_stairs(context, source=None):
     # Write defaults as well: future addon defaults must not change a saved asset.
     for name, value in values.items():
         setattr(settings, name, value)
-    settings.schema_version = 1
+    settings.schema_version = SCHEMA_VERSION
     settings.is_stairs = True
     try:
         rebuild_stairs(root)
