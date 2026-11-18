@@ -29,7 +29,8 @@ Invalid settings display an error and retain the previous geometry. Switch to Ob
 updating; mesh edits are replaced by the next rebuild.
 
 Generated railing parts are child meshes of the stairs, grouped as Handrail, Infill Rails, Posts,
-Handrail Supports and Coupling Sleeves. Integral stems are part of Posts and have no separate support
+Handrail Supports and Coupling Sleeves (Type 1), or Handrail / Infill Corner Connectors (Type 2).
+Integral stems are part of Posts and have no separate support
 object. Moving the stairs moves the assembly. User-added children are retained.
 No timers, frame handlers or dependency-graph handlers are installed, and registering the addon or
 loading a file does not rebuild saved objects.
@@ -47,7 +48,7 @@ landing projection at Edge Inset. The handrail, infill rails and landing posts s
 **Outer Railing** can disable the outer route on multi-flight stairs while keeping the inner route.
 Its interpretation follows Turn Direction. On a straight single flight, use Left Side / Right Side.
 
-Terminology: **handrail** is the upper graspable tube; **railing system** is the complete assembly.
+Terminology: **handrail** is the upper graspable member; **railing system** is the complete assembly.
 The smaller tubes are **infill rails**, the uprights are **posts**, their thin top connections are
 **handrail supports**, and the sleeves at elbows are **coupling sleeves**.
 
@@ -84,9 +85,56 @@ Existing configured objects keep their saved handrail side count. New resolution
 initialized on the next update without replacing saved input values. Restart Blender after the
 addon change and press **Update** on existing stairs to rebuild the post topology.
 
+## Type 2 railings
+
+Select **Railing System > Type > Type 2 · Rectangular**. This type uses square posts, a rectangular
+handrail and straight round infill rails. Each direction change has one fixed, one-piece corner
+connector for the handrail and one for each infill rail. There are no hinge or pivot parts.
+Straight members are trimmed at the fitting ends, rather than continuing through the corner.
+
+- **Handrail Width / Handrail Thickness** set the rectangular cross-section; defaults are 50 × 25 mm.
+- **Square Post Width** sets the square post cross-section; default 40 mm. Flange, shaft and collar
+  remain one connected mesh per post with flat shoulders.
+- **Corner Connector Length** sets the target length of each fitting leg. It adapts to cross-section
+  size and available space; impossible combinations retain the previous geometry and report an error.
+- **Connector Allowance** adds material around the straight member's section at the fitting; default 2 mm.
+- Infill rail radius, side count, count, clearance, post spacing and left/right/outer controls remain
+  available. Both types use the same landing-edge routes, including enlarged 90° landing projections.
+- Square posts and rectangular handrails have four-sided cross-sections. Cylinder-side settings
+  remain available for infill rails and separate round support stems. Integral stems are square and
+  share the post topology through a flat shoulder.
+
+Each type retains its own section inputs when switching. Existing stairs keep Type 1 and their saved
+settings; the new Type 2 dimensions are initialized on Update. Selecting any new corner connector
+opens its owning stairs in the configurator, just like other generated parts.
+
 The **Modular** tab in the 3D View sidebar contains the grid snapping and UV
 tools. UV generation operates on selected faces in Edit Mode, including across
 multiple edited mesh objects.
+
+## Tread finish
+
+In **Tread Finish & Bevels**, choose one of two alternatives:
+
+- **Original Bevel** retains the structural mesh and its existing Upper/Lower Bevel controls.
+- **Additional Tiles / Plates** creates one **Tread Plates** child object containing separate solid
+  tread and intermediate landing plates. **Plate Thickness** is recessed into the structure: finished
+  tread/landing levels, total rise, riser spacing, the underside and railing bases remain unchanged.
+  Thickness must be positive and smaller than both Riser and Slab Height.
+
+**Plate Material** is stored on the stair configuration and defaults to a separate **Stair Tread Finish**
+material. It survives rebuilds, finish switches, copied configurations and save/reopen. Selecting the
+plate object opens its owning stair configuration.
+
+**Front Edge Bevel** and **Side Edge Bevels** independently round the plates' upper exposed edges.
+Width, segment count and profile are independent from the original bevel settings. Width is clamped
+below half the plate thickness. Rear edges against risers and landing/flight interfaces stay square.
+The original structural tread bevels are replaced in plate mode; their saved settings return when
+switching back to Original Bevel.
+
+For both railing types, overhanging landing routes first transition from the flight slope to a
+horizontal segment, then turn in plan. The outgoing route likewise aligns horizontally with the
+next flight before ascending; slope and lateral direction no longer change at the same fitting.
 
 **Generate UVs from View** automatically selects the world axes closest to the
 current 3D View's horizontal and vertical directions. It offsets each channel
@@ -170,5 +218,14 @@ in a temporary directory; set `STAIRS_TEST_OUTPUT` to choose the output folder.
 internal shaft caps, both support constructions, side-count inheritance, the outer-route switch for
 both turn directions and migration of existing saved configurations. Run it with the same Blender
 command, replacing the Python script path.
+
+`tests/test_stairs_type2.py` checks square/rectangular cross-sections, one-piece fitting counts,
+straight/fitting end alignment, both turn directions and gap sizes, separate/integral supports,
+type switching, schema migration and save/reopen persistence for Type 2.
+
+`tests/test_stairs_finishes.py` checks exact unbeveled volume partition, unchanged finished levels
+and underside, closed plate/base meshes across offsets/cuts/reinforcement/landings, independent
+plate bevels, both railing types, material persistence, finish switching, copied configurations,
+schema migration and separate slope/plan turns at overhanging landings.
 
 For a recessed profile, start with **Riser Offset = 0.04 m**, **Slab Height = 0.12 m**, **Upper Bevel Width = 0.018 m / 5 segments** and **Lower Bevel Width = 0.006 m / 3 segments**, with both profiles at `0.5`. These controls are in the **Stairs Configurator** side panel. The development junction points directly to the EasyGridAligner source folder; procedural geometry is in `geometry/`, object settings in `props/`, rebuilding in `services/`, actions in `ops/`, and panels in `ui/`.

@@ -31,7 +31,7 @@ def _add_face(indices, faces, lookup):
 
 def _stair_shell(step_count, width, riser, tread, slab_height, use_side_ribs,
                  rib_width, rib_z_offset, cut_top, riser_offset,
-                 open_start=False, open_end=False):
+                 open_start=False, open_end=False, plate_thickness=0.0):
     """Triangular steps on one continuous slab, with no internal interfaces."""
     half_width = width / 2
     ribs = use_side_ribs and rib_width > EPSILON and rib_z_offset > EPSILON
@@ -45,11 +45,16 @@ def _stair_shell(step_count, width, riser, tread, slab_height, use_side_ribs,
         front, back = -index * tread, -(index + 1) * tread
         base, top = index * riser, (index + 1) * riser
         points = {
-            'A': (front, base - slab_height), 'B': (front, base),
-            'C': (front + riser_offset, top), 'D': (back, top),
+            'A': (front, base - slab_height),
+            'B': (front, base - plate_thickness if index > 0 or open_start else base),
+            'G': (front, base),
+            'C': (front + riser_offset * (1 - plate_thickness / riser), top - plate_thickness),
+            'D': (back, top - plate_thickness),
             'E': (back, top - slab_height),
         }
-        for cap in (('B', 'C', 'D'), ('A', 'B', 'D', 'E')):
+        caps = ((('B', 'G', 'D'), ('G', 'C', 'D'), ('A', 'B', 'D', 'E'))
+                if plate_thickness > EPSILON else (('B', 'C', 'D'), ('A', 'B', 'D', 'E')))
+        for cap in caps:
             _add_face([vertex(points[name], -half_width) for name in cap], faces, face_lookup)
             _add_face([vertex(points[name], half_width) for name in reversed(cap)], faces, face_lookup)
 
@@ -63,7 +68,8 @@ def _stair_shell(step_count, width, riser, tread, slab_height, use_side_ribs,
                     x = half_width
             return vertex(points[name], x)
 
-        edges = [('B', 'C'), ('C', 'D'), ('E', 'A')]
+        edges = ([('B', 'G'), ('G', 'C'), ('C', 'D'), ('E', 'A')]
+                 if plate_thickness > EPSILON else [('B', 'C'), ('C', 'D'), ('E', 'A')])
         if index == 0 and not open_start:
             edges.append(('A', 'B'))
         if index == step_count - 1 and not open_end:
@@ -269,7 +275,7 @@ def _flight_layout(flight_count, step_count, width, riser, tread, turn_angle,
     return frames, landings
 
 
-def _landing_shell(bounds, height, slab_height, openings, rib_width):
+def _landing_shell(bounds, height, slab_height, openings, rib_width, plate_thickness=0.0):
     """Grid a flat slab with precisely matching flight apertures in its sides."""
     x0, x1, y0, y1 = bounds
     xs, ys = {x0, x1}, {y0, y1}
@@ -289,23 +295,23 @@ def _landing_shell(bounds, height, slab_height, openings, rib_width):
     low = height - slab_height
     for left, right in zip(xs, xs[1:]):
         for near, far in zip(ys, ys[1:]):
-            for z in (low, height):
+            for z in (low, height - plate_thickness):
                 _add_face([vertex(left, near, z), vertex(right, near, z),
                            vertex(right, far, z), vertex(left, far, z)], faces, face_lookup)
         for y, side in ((y0, 'FAR'), (y1, 'NEAR')):
             if not open_interval(side, left, right):
                 _add_face([vertex(left, y, low), vertex(right, y, low),
-                           vertex(right, y, height), vertex(left, y, height)], faces, face_lookup)
+                           vertex(right, y, height - plate_thickness), vertex(left, y, height - plate_thickness)], faces, face_lookup)
     for near, far in zip(ys, ys[1:]):
         for x, side in ((x0, 'LEFT'), (x1, 'RIGHT')):
             if not open_interval(side, near, far):
                 _add_face([vertex(x, near, low), vertex(x, far, low),
-                           vertex(x, far, height), vertex(x, near, height)], faces, face_lookup)
+                           vertex(x, far, height - plate_thickness), vertex(x, near, height - plate_thickness)], faces, face_lookup)
     return vertices, faces
 
 
 def _multi_flight_shell(frames, landings, step_count, width, riser, tread, slab_height,
-                        use_side_ribs, rib_width, rib_z_offset, cut_top, riser_offset):
+                        use_side_ribs, rib_width, rib_z_offset, cut_top, riser_offset, plate_thickness=0.0):
     vertices, faces, lookup, face_lookup, owners = [], [], {}, set(), []
 
     def append(part_vertices, part_faces, frame, owner):
@@ -323,12 +329,13 @@ def _multi_flight_shell(frames, landings, step_count, width, riser, tread, slab_
     for index, frame in enumerate(frames):
         part = _stair_shell(step_count, width, riser, tread, slab_height, use_side_ribs,
                             rib_width, rib_z_offset, cut_top, riser_offset,
-                            open_start=index > 0, open_end=index < len(frames) - 1)
+                            open_start=index > 0, open_end=index < len(frames) - 1,
+                            plate_thickness=plate_thickness)
         append(*part, frame, index)
     connection_rib = rib_width if use_side_ribs and rib_z_offset > EPSILON else 0.0
     for landing in landings:
         part = _landing_shell(landing['bounds'], landing['height'], slab_height,
-                               landing['openings'], connection_rib)
+                               landing['openings'], connection_rib, plate_thickness)
         append(*part, landing['frame'], -1)
     return vertices, faces, owners
 
@@ -344,7 +351,7 @@ def build_stair_mesh(
     sharp_top_end=True, sharp_start=True, sharp_unbeveled=True,
     flight_count=1, turn_angle='180', turn_direction='RIGHT', landing_depth=1.2,
     flight_gap=0.2, landing_side_overhang=0.0, landing_end_overhang=0.0,
-    sharp_landings=True,
+    sharp_landings=True, tread_finish='ORIGINAL', plate_thickness=0.02,
 ):
     if tread + riser_offset <= EPSILON:
         raise ValueError('Riser Offset must be greater than -Tread')
@@ -356,18 +363,27 @@ def build_stair_mesh(
         raise ValueError('Landing depth must be positive and overhangs cannot be negative')
     if flight_count > 1 and flight_gap < 0.001 - EPSILON:
         raise ValueError('Flight Gap must be at least 1 mm to keep adjacent flights separate')
+    if tread_finish not in ('ORIGINAL', 'PLATES'):
+        raise ValueError('Choose Original Bevel or Tread Plates')
+    recess = plate_thickness if tread_finish == 'PLATES' else 0.0
+    if tread_finish == 'PLATES':
+        if recess <= EPSILON or recess >= min(riser, slab_height) - EPSILON:
+            raise ValueError('Plate Thickness must be positive and smaller than Riser and Slab Height')
+        # Tread junction bevels are replaced by the finish on the separate plates.
+        use_top_bevel = use_bottom_bevel = False
     rib_width = min(max(rib_width, 0.0), max(0.0, width / 2 - EPSILON))
     frames, landings = _flight_layout(flight_count, step_count, width, riser, tread,
                                       turn_angle, turn_direction, landing_depth, flight_gap,
                                       landing_side_overhang, landing_end_overhang)
     if flight_count == 1:
         vertices, faces = _stair_shell(step_count, width, riser, tread, slab_height,
-                                        use_side_ribs, rib_width, rib_z_offset, cut_top, riser_offset)
+                                        use_side_ribs, rib_width, rib_z_offset, cut_top, riser_offset,
+                                        plate_thickness=recess)
         owners = None
     else:
         vertices, faces, owners = _multi_flight_shell(
             frames, landings, step_count, width, riser, tread, slab_height,
-            use_side_ribs, rib_width, rib_z_offset, cut_top, riser_offset)
+            use_side_ribs, rib_width, rib_z_offset, cut_top, riser_offset, recess)
     mesh = bpy.data.meshes.new(name)
     bm = bmesh.new()
     try:

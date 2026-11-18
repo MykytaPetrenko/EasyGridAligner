@@ -6,15 +6,19 @@ from mathutils import Matrix
 
 from ..geometry.railings import build_railing_meshes
 from ..geometry.stairs import build_stair_mesh
+from ..geometry.tread_plates import build_tread_plate_mesh
 
 
 STAIR_FIELDS = tuple(name for name in signature(build_stair_mesh).parameters if name != 'name')
 RAIL_FIELDS = tuple(name for name in signature(build_railing_meshes).parameters if name != 'stairs')
-INPUT_FIELDS = STAIR_FIELDS + RAIL_FIELDS + ('rail_enabled',)
+PLATE_FIELDS = tuple(name for name in signature(build_tread_plate_mesh).parameters if name not in ('name', 'stairs'))
+INPUT_FIELDS = STAIR_FIELDS + RAIL_FIELDS + PLATE_FIELDS + ('rail_enabled',)
 _REBUILDING = set()
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 4
 PART_NAMES = {'handrail': 'Handrail', 'lower_rails': 'Infill Rails', 'posts': 'Posts',
-              'connectors': 'Handrail Supports', 'couplings': 'Coupling Sleeves'}
+              'connectors': 'Handrail Supports', 'couplings': 'Coupling Sleeves',
+              'handrail_corners': 'Handrail Corner Connectors', 'infill_corners': 'Infill Corner Connectors',
+              'tread_plates': 'Tread Plates'}
 LEGACY_PART_NAMES = {'lower_rails': 'Lower Rails', 'connectors': 'Connectors', 'couplings': 'Couplings'}
 
 
@@ -50,6 +54,18 @@ def _copy_materials(mesh, previous, fallback):
         mesh.materials.append(material)
 
 
+def _plate_material():
+    material = bpy.data.materials.get('Stair Tread Finish')
+    if material is None:
+        material = bpy.data.materials.new('Stair Tread Finish')
+        material.diffuse_color = (.22, .12, .055, 1)
+        material.use_nodes = True
+        shader = material.node_tree.nodes.get('Principled BSDF')
+        shader.inputs['Base Color'].default_value = material.diffuse_color
+        shader.inputs['Roughness'].default_value = .45
+    return material
+
+
 def rebuild_stairs(root):
     if root.type != 'MESH' or not root.modular_stairs.is_stairs:
         raise ValueError('Select a configured stairs object')
@@ -72,6 +88,10 @@ def rebuild_stairs(root):
             settings.schema_version = SCHEMA_VERSION
         parameters = {name: getattr(settings, name) for name in STAIR_FIELDS}
         prepared['stairs'] = build_stair_mesh(f'{root.name} Mesh', **parameters)
+        if settings.tread_finish == 'PLATES':
+            prepared['tread_plates'] = build_tread_plate_mesh(
+                f'{root.name} Tread Plates', parameters,
+                **{name: getattr(settings, name) for name in PLATE_FIELDS})
         if settings.rail_enabled:
             prepared.update(build_railing_meshes(parameters, **{name: getattr(settings, name) for name in RAIL_FIELDS}))
         children = {child.get('modular_stair_part'): child for child in root.children
@@ -84,7 +104,13 @@ def rebuild_stairs(root):
         for name, mesh in prepared.items():
             if name != 'stairs':
                 previous = children.get(name)
-                _copy_materials(mesh, previous.data if previous is not None else None, _steel_material())
+                if name == 'tread_plates':
+                    if settings.plate_material is None:
+                        settings.plate_material = (previous.data.materials[0] if previous is not None
+                                                   and previous.data.materials else _plate_material())
+                    mesh.materials.append(settings.plate_material)
+                else:
+                    _copy_materials(mesh, previous.data if previous is not None else None, _steel_material())
         previous = root.data
         root.data = prepared.pop('stairs')
         _discard_mesh(previous)
@@ -147,6 +173,7 @@ def create_stairs(context, source=None):
     # Write defaults as well: future addon defaults must not change a saved asset.
     for name, value in values.items():
         setattr(settings, name, value)
+    settings.plate_material = source_settings.plate_material
     settings.schema_version = SCHEMA_VERSION
     settings.is_stairs = True
     try:
