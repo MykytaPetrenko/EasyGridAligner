@@ -113,11 +113,6 @@ def build_baluster_railing_meshes(
         cap_route = (returned_handrail_path(route, rail_type3_handrail_width, rail_type3_handrail_thickness,
                                              return_radius, return_segments) if metal_handrail else
                      _extend_path(route, rail_start_extension, rail_end_extension))
-        if metal_handrail and not handrail_only and stairs.get('railing_start_on_landing', False):
-            # An open upper flight starts with a mandatory landing post. Keep
-            # the straight handrail over its full shaft before forming the return.
-            direction = (route[1] - route[0]).normalized()
-            cap_route[0] = route[0] - direction * ((rail_post_size / 2 + .005) / direction.xy.length)
         cap_path = [point + UP * rail_height for point in cap_route]
         cap_rings = _mitered_bar_rings(cap_path, rail_type3_handrail_width, rail_type3_handrail_thickness)
         if metal_handrail:
@@ -131,7 +126,7 @@ def build_baluster_railing_meshes(
         if metal_handrail and handrail_only:
             continue
         terminal_tread = sqrt(stairs['tread'] ** 2 + stairs['riser'] ** 2) / 2
-        start_setback = 0 if stairs.get('railing_start_on_landing', False) else min(rail_infill_start_setback, terminal_tread)
+        start_setback = min(rail_infill_start_setback, terminal_tread)
         controls = route if metal_handrail else _trim_path(route, start_setback, min(rail_infill_end_setback, terminal_tread))
         # Offset within the cross-section, perpendicular to each run. This
         # shares the timber underside plane on slopes and at mitered turns.

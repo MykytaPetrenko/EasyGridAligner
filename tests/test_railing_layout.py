@@ -1,4 +1,5 @@
 """Mandatory supports, both tread modes, uniform landings and fixed-pitch bays."""
+from collections import Counter
 import itertools
 import os
 from pathlib import Path
@@ -15,7 +16,8 @@ import EasyGridAligner
 from EasyGridAligner.geometry.railing_layout import flight_post_steps, plan_railing_posts, fixed_bay_infill
 from EasyGridAligner.geometry.railing_parts import _railing_route, _landing_route, _closest_on_path, _trim_path
 from EasyGridAligner.geometry.stairs import _flight_layout
-from EasyGridAligner.services.stairs import STAIR_FIELDS
+from EasyGridAligner.services.stairs import STAIR_FIELDS, RAIL_FIELDS
+from EasyGridAligner.geometry.railings import build_railing_meshes
 from EasyGridAligner.tests.test_stairs_type4 import Type4Test
 from EasyGridAligner.tests.test_stairs_type2 import components
 
@@ -140,7 +142,7 @@ class RailingLayoutTest(unittest.TestCase):
                 self.assertAlmostEqual(ys[0] - first.y, last.y - ys[-1], places=6)
                 self.assertGreaterEqual(ys[0] - first.y, (.04 + .025) / 2 + .005 - 1e-6)
 
-    def test_generated_assemblies_have_landing_transition_posts_even_with_no_landing_rails(self):
+    def test_landing_transition_posts_require_include_landings(self):
         root = self.create(rail_type='TYPE_4', flight_count=3)
         for style, include, angle in itertools.product(('TYPE_3', 'TYPE_4'), (False, True), ('90', '180')):
             self.configure(root, rail_type=style, rail_inner_include_landings=include,
@@ -154,20 +156,36 @@ class RailingLayoutTest(unittest.TestCase):
                 for index, frame in enumerate(frames[1:], 1):
                     before = (_trim_path(_landing_route(s, landings[index - 1], side, root.modular_stairs.rail_inset, root.modular_stairs.rail_corner_length), 0, s['tread'] / 2)[-1]
                               if include else frame @ Vector((x, s['tread'] / 2, 0)))
-                    self.assert_has_point(before, actual)
+                    if include:
+                        self.assert_has_point(before, actual)
+                    else:
+                        self.assertFalse(any((before - point).length < 1e-5 for point in actual))
             self.assert_closed(mesh)
 
-    def test_open_upper_flight_handrail_covers_mandatory_landing_post(self):
-        root = self.create(rail_type='TYPE_4', flight_count=2, rail_inner_mount='NONE',
-                           rail_outer_include_landings=False)
-        mesh = self.parts(root)['balustrade'].data
-        rails = Type4Test.handrails(self, mesh)
-        upper = max(rails, key=lambda group: sum(mesh.vertices[i].co.z for i in group) / len(group))
-        s, frames, landings, route, planned = self.layout(root, -1)
-        inverse = frames[1].inverted()
-        segments = root.modular_stairs.rail_type4_return_segments
-        start = sum((inverse @ mesh.vertices[i].co for i in upper[segments * 4:(segments + 1) * 4]), Vector()) / 4
-        self.assertGreater(start.y, root.modular_stairs.rail_post_size / 2)
+    def test_every_detached_flight_is_an_exact_copy_of_the_first(self):
+        root = self.create(rail_type='TYPE_4', flight_count=3,
+                           rail_inner_include_landings=False, rail_outer_include_landings=False)
+        for style, angle, direction in itertools.product(
+            ('TYPE_1', 'TYPE_2', 'TYPE_3', 'TYPE_4'), ('90', '180'), ('LEFT', 'RIGHT'),
+        ):
+            with self.subTest(style=style, angle=angle, direction=direction):
+                self.configure(root, rail_type=style, turn_angle=angle, turn_direction=direction)
+                stairs, frames, _, _, _ = self.layout(root, 1)
+                parameters = {name: getattr(root.modular_stairs, name) for name in RAIL_FIELDS}
+                reference = build_railing_meshes(dict(stairs, flight_count=1), **parameters)
+                try:
+                    actual = self.parts(root)
+                    self.assertEqual(set(actual), set(reference))
+                    for role, mesh in reference.items():
+                        expected = Counter(tuple(round(value, 4) for value in frame @ vertex.co)
+                                           for frame in frames for vertex in mesh.vertices)
+                        generated = Counter(tuple(round(value, 4) for value in vertex.co)
+                                            for vertex in actual[role].data.vertices)
+                        self.assertEqual(generated, expected, role)
+                        self.assert_closed(actual[role].data)
+                finally:
+                    for mesh in reference.values():
+                        bpy.data.meshes.remove(mesh)
 
     def test_generated_bay_infill_preserves_exact_pitch(self):
         root = self.create(rail_type='TYPE_4', rail_post_every_steps=3)
@@ -222,10 +240,13 @@ class RailingLayoutTest(unittest.TestCase):
                             corner = settings.rail_bend_radius if style == 'TYPE_1' else settings.rail_corner_length
                             before = (_trim_path(_landing_route(stairs, landings[index - 1], side, settings.rail_inset, corner), 0, stairs['tread'] / 2)[-1]
                                       if include else frame @ Vector((x, stairs['tread'] / 2, 0)))
-                            self.assert_has_point(before, actual)
-                            local = frame.inverted() @ before
-                            footprint = settings.rail_post_radius * 1.8 if style == 'TYPE_1' else settings.rail_post_size * .9
-                            self.assertGreater(local.y, footprint + .005)
+                            if include:
+                                self.assert_has_point(before, actual)
+                                local = frame.inverted() @ before
+                                footprint = settings.rail_post_radius * 1.8 if style == 'TYPE_1' else settings.rail_post_size * .9
+                                self.assertGreater(local.y, footprint + .005)
+                            else:
+                                self.assertFalse(any((before - point).length < 1e-5 for point in actual))
                             # The old mandatory support sat on this riser plane and intersected the tread.
                             old = frame @ Vector((x, 0, 0))
                             self.assertFalse(any((old - point).length < 1e-5 for point in actual))

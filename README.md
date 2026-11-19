@@ -147,8 +147,8 @@ the step noses. All four railing types share the following **Posts** controls:
   Both modes always include the first and last tread.
 - Each landing starts and ends with mandatory posts. The support before each upper flight is
   set back onto the landing by half a tread along the route, keeping its foot clear of the first riser.
-  These posts remain when landing rails are disabled; an open upper-flight section includes the
-  corresponding short landing extension.
+  With **Include Landings** disabled, every flight behaves like the first: posts are confined to
+  its treads, with no extra support or rail extension onto the preceding landing.
 - Landing corners normally receive supports too. Nearby landing-boundary/elbow points share a
   tread or transition support when they fall within half a tread or the post-footprint clearance.
   Tread supports and the anchor before an upper flight have priority, preventing doubled/tripled
@@ -195,7 +195,6 @@ Every open handrail end has a downward half-circle return. **Ends & Extensions >
 sets its centerline radius (default **40 mm**); **End Return Segments** controls arc resolution
 (default **12**). The radius must exceed half the handrail thickness. The complete return is fitted
 to the vertical boundary at the first/last stair tread, accounting for slope and arc thickness.
-At an open upper-flight start, a small extension covers the mandatory landing post before the return.
 Only the handrail extends past the first and last supporting posts. In every railing type, lower
 members stop at the actual terminal posts; exposed ends are cut vertically through their centers,
 including on slopes. Additional infill setbacks may shorten them further inside that interval.
@@ -382,7 +381,8 @@ unchanged existing styles during schema migration, closed solids and failed-rebu
 for all four styles, single-post sections, both directions and different elbow radii.
 
 `tests/test_railing_layout.py` verifies both integer-tread distributions, mandatory landing/flight
-transitions with or without landing rails, optional tight-gap corners, uniform landing intervals,
+transitions with landing rails, identical standalone flights when landings are excluded, optional
+tight-gap corners, uniform landing intervals,
 fixed bar-to-bar pitch with centered end gaps, sparse/dense counts, landing-side tread clearance,
 shared support landmarks across all four types, post coverage and saved/copyable layout settings.
 

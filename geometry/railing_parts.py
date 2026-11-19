@@ -156,8 +156,6 @@ def _railing_route(p, frames, landings, side, inset, radius, spacing):
     x = side * (p['width'] / 2 - inset)
     length, height = p['step_count'] * p['tread'], p['step_count'] * p['riser']
     controls = [frames[0] @ Vector((x, 0, 0))]
-    if p.get('railing_start_on_landing', False):
-        controls.insert(0, frames[0] @ Vector((x, p['tread'] / 2, 0)))
     posts = []
     stride = max(1, floor(spacing / Vector((p['tread'], p['riser'])).length))
     for index, frame in enumerate(frames):

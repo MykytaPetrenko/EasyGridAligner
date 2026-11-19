@@ -59,14 +59,11 @@ def plan_railing_posts(stairs, frames, landings, path, side, inset, corner_lengt
         raise ValueError('Landing Post Spacing must be positive')
     x = side * (stairs['width'] / 2 - inset)
     candidates = []
-    for index, frame in enumerate(frames):
+    for frame in frames:
         for step in indices:
             target = frame @ Vector((x, -(step + .5) * stairs['tread'], (step + .5) * stairs['riser']))
             base = frame @ Vector((x, -(step + .5) * stairs['tread'], (step + 1) * stairs['riser']))
             candidates.append((base, target, step in (0, stairs['step_count'] - 1), 3))
-        if index == 0 and stairs.get('railing_start_on_landing', False):
-            base = frame @ Vector((x, stairs['tread'] / 2, 0))
-            candidates.append((base, base, True, 3))
     inner = 1 if stairs['turn_direction'] == 'RIGHT' else -1
     minimum = post_size * 1.8 + .005
     for landing in landings:
